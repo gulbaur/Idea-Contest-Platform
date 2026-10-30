@@ -1,0 +1,24 @@
+# Все текстовые файлы хранятся и извлекаются с окончаниями строк LF,
+# чтобы shell-скрипты и Docker-файлы работали в Linux-контейнерах
+# независимо от core.autocrlf на машине разработчика (Windows).
+* text=auto eol=lf
+
+# Явно для критичных типов
+*.sh          text eol=lf
+Dockerfile    text eol=lf
+Dockerfile.*  text eol=lf
+*.dockerfile  text eol=lf
+*.yml         text eol=lf
+*.yaml        text eol=lf
+*.env.example text eol=lf
+.env.example  text eol=lf
+
+# Бинарные файлы
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.woff binary
+*.woff2 binary
