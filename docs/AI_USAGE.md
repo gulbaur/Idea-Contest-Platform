@@ -26,6 +26,7 @@
 
 | Что | Где использовано | Источник |
 |---|---|---|
-| — | пока не использовались | — |
+| Шаблон миграции `script.py.mako` и структура `env.py` Alembic | `backend/migrations/` | Стандартные шаблоны Alembic (`alembic init -t async`), написаны вручную по их образцу и сокращены — https://alembic.sqlalchemy.org/ |
+| Официальные Docker-образы `python:3.13-slim`, `postgres:17-alpine` | `backend/Dockerfile`, `compose.yaml` | Docker Hub (официальные образы) |
 
 Таблица дополняется при каждом использовании генератора (например, `npm create vite`) или заимствованного решения.

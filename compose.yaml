@@ -1,0 +1,60 @@
+# Локальный запуск (D-027). Все переменные имеют значения по умолчанию,
+# файл .env необязателен; описание переменных — .env.example и README.
+#
+#   docker compose up --build                                  — запустить сервис
+#   docker compose --profile test run --rm --build tests       — запустить тесты
+
+name: idea-contest
+
+x-database-url: &database-url "postgresql+asyncpg://${POSTGRES_USER:-contest}:${POSTGRES_PASSWORD:-contest}@db:5432/${POSTGRES_DB:-contest}"
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-contest}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-contest}
+      POSTGRES_DB: ${POSTGRES_DB:-contest}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  backend:
+    build:
+      context: ./backend
+      target: runtime
+    environment:
+      DATABASE_URL: *database-url
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-24}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-demo-password}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  tests:
+    profiles: ["test"]
+    build:
+      context: ./backend
+      target: test
+    environment:
+      # Тесты сами создают и пересоздают отдельную БД <POSTGRES_DB>_test.
+      DATABASE_URL: *database-url
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db-data:

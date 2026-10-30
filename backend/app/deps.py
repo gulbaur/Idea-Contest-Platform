@@ -1,0 +1,70 @@
+"""Общие зависимости FastAPI: часы и текущий пользователь."""
+
+from dataclasses import dataclass
+from typing import Annotated
+
+from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.clock import Clock
+from app.db import get_db
+from app.models import User, UserSession
+from app.security import hash_session_token
+
+
+def get_clock(request: Request) -> Clock:
+    return request.app.state.clock
+
+
+DbSession = Annotated[AsyncSession, Depends(get_db)]
+ClockDep = Annotated[Clock, Depends(get_clock)]
+
+# auto_error=False: отсутствие заголовка обрабатываем сами, чтобы ответ был единообразным (401).
+_bearer = HTTPBearer(auto_error=False, description="Токен из POST /api/auth/login")
+
+
+@dataclass
+class CurrentUser:
+    user: User
+    session_id: int
+
+
+def _unauthorized() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Требуется вход",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+async def get_current_user(
+    db: DbSession,
+    clock: ClockDep,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+) -> CurrentUser:
+    """Определяет пользователя только по токену сессии (D-003).
+
+    Идентификатор и роль берутся из БД по найденной сессии. Любые поля
+    вроде `user_id` или `role`, присланные клиентом в запросе, здесь не читаются.
+    """
+    if credentials is None:
+        raise _unauthorized()
+    row = (
+        await db.execute(
+            select(UserSession, User)
+            .join(User, User.id == UserSession.user_id)
+            .where(UserSession.token_hash == hash_session_token(credentials.credentials))
+        )
+    ).first()
+    if row is None:
+        raise _unauthorized()
+    session, user = row
+    # Сессия действует строго до expires_at: в момент expires_at она уже недействительна.
+    if clock.now() >= session.expires_at:
+        raise _unauthorized()
+    return CurrentUser(user=user, session_id=session.id)
+
+
+CurrentUserDep = Annotated[CurrentUser, Depends(get_current_user)]

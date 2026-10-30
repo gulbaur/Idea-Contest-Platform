@@ -62,3 +62,35 @@
 - следующий коммит — эта запись журнала с хешем.
 
 - **Завершение этапа 0:** 2026-10-30T14:14:00+05:00
+
+---
+
+## Этап 1 — каркас backend, БД, вход
+
+- **Начало:** 2026-10-30T14:32:37+05:00
+- **Первый прогон тестов:** 2026-10-30T14:38:31+05:00 — 24 passed
+- **Проверка запущенного сервиса:** 2026-10-30T14:41:03+05:00
+- **Завершение:** см. время коммита ниже
+
+**Цель:** запуск через Docker Compose, PostgreSQL с миграциями, демо-аккаунты, серверная идентичность (вход/выход/«кто я»), управляемые часы и тестовая инфраструктура на PostgreSQL.
+
+**Решения** (записаны в DECISIONS.md до добавления зависимостей): D-019 pip + requirements с точными версиями; D-020 SQLAlchemy 2.1 async + asyncpg; D-021 Alembic, миграции при старте; D-022 pydantic-settings; D-023 scrypt из стандартной библиотеки + SHA-256 токена; D-024 uvicorn, один процесс; D-025 pytest + pytest-asyncio + httpx на PostgreSQL с TRUNCATE между тестами; D-026 Clock в `app.state`; D-027 compose-сервисы `db`, `backend`, `tests` (профиль `test`). Версии библиотек определены установкой в чистом контейнере `python:3.13-slim` в 14:33.
+
+**Изменения:**
+- `compose.yaml`, `.env.example`, `backend/Dockerfile` (стадии `runtime` и `test`), `backend/requirements*.txt`.
+- `backend/app`: `main.py` (фабрика `create_app`), `config.py`, `clock.py` (`SystemClock`, `FakeClock`), `db.py`, `models.py` (`users`, `sessions`), `security.py`, `deps.py` (`get_current_user`), `api/auth.py` (`POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`), `api/health.py` (`GET /api/health`), `seed.py` (6 демо-аккаунтов).
+- `backend/migrations`: `env.py` (async), миграция `0001_users_and_sessions`.
+- `backend/tests`: `conftest.py` (пересоздание БД `contest_test`, миграции, TRUNCATE, FakeClock), `helpers.py`, тесты входа, безопасности, миграций, health/seed.
+- README: требования, переменные, запуск, демо-аккаунты, тесты, ручная проверка через Swagger, сценарии двух вкладок, состояние.
+
+**Ошибки и исправления:**
+- Alembic 1.20 выдавал `DeprecationWarning` об отсутствии `path_separator` в `alembic.ini` — добавлено `path_separator = os`; предупреждение исчезло.
+- В процессе: вспомогательные функции тестов вынесены из `conftest.py` в `tests/helpers.py` (импорт из conftest — плохая практика pytest).
+
+**Проверки (фактически запущены):**
+- `docker compose --profile test run --rm --build tests` — **24 passed** (до исправления предупреждения — 24 passed, 1 warning).
+- Финальный прогон 2026-10-30T14:42:48+05:00 — **24 passed**, без предупреждений.
+- Проверка, что тест миграций ловит расхождения: временно изменена длина `users.login` в модели (64 → 80) → `test_migrations_match_models` **упал** с `modify_type`; модель восстановлена.
+- `docker compose up -d --build --wait` — `db` и `backend` в состоянии healthy; в журнале backend: миграция `0001` применена, создано 6 демо-пользователей.
+- Запросы `curl` к запущенному сервису: `/api/health` → `ok`; вход `anna` и `organizer` → `/me` возвращает каждому своего пользователя; неверный пароль → 401; выход → 204, затем `/me` с тем же токеном → 401; `/docs` → 200; в таблице `sessions` хранится хеш, а не токен.
+- `docker compose restart backend` — повторный seed создал 0 пользователей, данные (6 пользователей, 1 сессия) сохранились.
