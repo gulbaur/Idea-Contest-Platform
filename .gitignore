@@ -32,3 +32,6 @@ playwright-report/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Локальные переопределения Docker Compose (например, открытый порт БД для DBeaver)
+compose.override.yaml
