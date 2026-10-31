@@ -41,3 +41,7 @@ class IdeaOut(BaseModel):
     is_mine: bool
     # Автор раскрывается только после финала (D-005, F6); до этого — null.
     author: AuthorOut | None = None
+    # Число голосов: организатору с начала голосования, всем — после финала; иначе null (D-035).
+    votes_count: int | None = None
+    # Голосовал ли текущий пользователь за эту идею. Чужие голоса не раскрываются (D-036).
+    voted_by_me: bool = False

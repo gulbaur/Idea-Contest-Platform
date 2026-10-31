@@ -67,7 +67,12 @@ async def test_submission_organizer_sees_only_counters(client, world):
     body, raw = await view(client, world, "organizer")
 
     assert body["ideas"] == []
-    assert body["stats"] == {"participants_count": 3, "ideas_count": 2}
+    assert body["stats"] == {
+        "participants_count": 3,
+        "ideas_count": 2,
+        "voters_count": 0,
+        "votes_count": 0,
+    }
     assert ANNA_IDEA not in raw and BORIS_IDEA not in raw
 
 

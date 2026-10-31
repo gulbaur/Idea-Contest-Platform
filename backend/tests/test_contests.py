@@ -43,7 +43,12 @@ async def test_organizer_creates_contest_with_all_employees_by_default(client):
     assert contest["topic"] == "Как улучшить офис"
     assert contest["phase"] == "submission"
     snap = (await snapshot(client, org, contest["id"])).json()
-    assert snap["stats"] == {"participants_count": len(EMPLOYEES), "ideas_count": 0}
+    assert snap["stats"] == {
+        "participants_count": len(EMPLOYEES),
+        "ideas_count": 0,
+        "voters_count": 0,
+        "votes_count": 0,
+    }
     assert snap["revision"] == 1
 
 

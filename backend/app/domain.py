@@ -21,3 +21,12 @@ def phase_at(submission_deadline: datetime, voting_deadline: datetime, now: date
     if now < voting_deadline:
         return Phase.VOTING
     return Phase.FINISHED
+
+
+def ranking_key(votes: int, submitted_at: datetime, idea_id: int) -> tuple:
+    """Ключ сортировки результатов (D-008, D-035).
+
+    Больше голосов — выше; при равенстве выше идея, поданная раньше; при одинаковом
+    времени подачи — меньший id (устойчивый порядок).
+    """
+    return (-votes, submitted_at, idea_id)

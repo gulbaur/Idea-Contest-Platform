@@ -11,8 +11,8 @@ from sqlalchemy.dialects.postgresql import insert
 
 from app.access import ensure_organizer, load_visible_contest
 from app.deps import ClockDep, CurrentUserDep, DbSession
-from app.domain import Phase, phase_at
-from app.models import Contest, ContestParticipant, Idea, Role, User
+from app.domain import Phase, phase_at, ranking_key
+from app.models import Contest, ContestParticipant, Idea, Role, User, Vote
 from app.schemas import AuthorOut, ContestSummary, IdeaOut
 
 router = APIRouter(prefix="/api", tags=["contests"])
@@ -35,10 +35,13 @@ class ContestCreateIn(BaseModel):
 
 
 class ContestStats(BaseModel):
-    """Статистика для экрана организатора. Число проголосовавших добавится на этапе 3."""
+    """Статистика для экрана организатора (F8)."""
 
     participants_count: int
     ideas_count: int
+    # Разные люди с хотя бы одним действующим голосом, а не число голосов (D-037).
+    voters_count: int
+    votes_count: int
 
 
 class ContestSnapshot(BaseModel):
@@ -48,6 +51,8 @@ class ContestSnapshot(BaseModel):
     ideas: list[IdeaOut]
     # Только для организатора; участникам — null.
     stats: ContestStats | None = None
+    # Только после финала (D-035): первая идея по правилу «голоса → время подачи → id».
+    winner_idea_id: int | None = None
 
 
 def _summary(contest: Contest, now: datetime) -> ContestSummary:
@@ -173,10 +178,10 @@ async def get_contest(
 ) -> ContestSnapshot:
     """Всё, что пользователь может видеть в конкурсе прямо сейчас (D-028).
 
-    Что видно, решается здесь, на сервере (D-005, D-007):
+    Что видно, решается здесь, на сервере (D-005, D-007, D-035):
     - подача: участник — только свои идеи; организатор — только счётчики;
-    - голосование: все идеи без авторов;
-    - финал: все идеи с авторами.
+    - голосование: все идеи без авторов; счёт голосов — только организатору;
+    - финал: все идеи с авторами, счётом и победителем.
     """
     # Все запросы снимка видят одно состояние БД, поэтому revision соответствует данным.
     await db.connection(execution_options={"isolation_level": "REPEATABLE READ"})
@@ -198,15 +203,50 @@ async def get_contest(
         else:
             statement = statement.where(Idea.author_id == user.id)  # чужие идеи не читаются из БД
 
+    # Результаты видны организатору с начала голосования и всем — после финала.
+    show_results = phase == Phase.FINISHED or (is_organizer and phase == Phase.VOTING)
+
+    votes_by_idea: dict[int, int] = {}
+    if show_results:
+        rows = await db.execute(
+            select(Vote.idea_id, func.count())
+            .where(Vote.contest_id == contest.id)
+            .group_by(Vote.idea_id)
+        )
+        votes_by_idea = dict(rows.all())
+
+    # Только собственные голоса пользователя — кто голосовал за что, не раскрывается (D-036).
+    my_votes: set[int] = set()
+    if not is_organizer and phase != Phase.SUBMISSION:
+        my_votes = set(
+            (
+                await db.scalars(
+                    select(Vote.idea_id).where(
+                        Vote.contest_id == contest.id, Vote.voter_id == user.id
+                    )
+                )
+            ).all()
+        )
+
     ideas: list[IdeaOut] = []
     if statement is not None:
         for idea, author_name in (await db.execute(statement)).all():
             out = IdeaOut.model_validate(
-                {**_idea_fields(idea), "is_mine": idea.author_id == user.id}
+                {
+                    **_idea_fields(idea),
+                    "is_mine": idea.author_id == user.id,
+                    "voted_by_me": idea.id in my_votes,
+                }
             )
             if phase == Phase.FINISHED:
                 out.author = AuthorOut(id=idea.author_id, display_name=author_name)
+            if show_results:
+                out.votes_count = votes_by_idea.get(idea.id, 0)
             ideas.append(out)
+
+    if show_results:
+        ideas.sort(key=lambda i: ranking_key(i.votes_count, i.submitted_at, i.id))
+    winner_idea_id = ideas[0].id if phase == Phase.FINISHED and ideas else None
 
     stats = None
     if is_organizer:
@@ -217,6 +257,14 @@ async def get_contest(
             ideas_count=await db.scalar(
                 select(func.count()).select_from(Idea).where(Idea.contest_id == contest.id)
             ),
+            voters_count=await db.scalar(
+                select(func.count(func.distinct(Vote.voter_id))).where(
+                    Vote.contest_id == contest.id
+                )
+            ),
+            votes_count=await db.scalar(
+                select(func.count()).select_from(Vote).where(Vote.contest_id == contest.id)
+            ),
         )
 
     return ContestSnapshot(
@@ -225,6 +273,7 @@ async def get_contest(
         server_time=now,
         ideas=ideas,
         stats=stats,
+        winner_idea_id=winner_idea_id,
     )
 
 

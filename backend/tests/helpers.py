@@ -73,3 +73,11 @@ async def submit_idea(
 
 async def snapshot(client: AsyncClient, token: str, contest_id: int):
     return await client.get(f"/api/contests/{contest_id}", headers=auth(token))
+
+
+async def vote(client: AsyncClient, token: str, idea_id: int):
+    return await client.post(f"/api/ideas/{idea_id}/vote", headers=auth(token))
+
+
+async def revoke(client: AsyncClient, token: str, idea_id: int):
+    return await client.delete(f"/api/ideas/{idea_id}/vote", headers=auth(token))

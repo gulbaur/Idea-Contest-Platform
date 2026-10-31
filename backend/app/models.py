@@ -124,3 +124,21 @@ class Idea(Base):
     # Версия для защиты от правки устаревших данных из другой вкладки (D-013, D-031).
     version: Mapped[int] = mapped_column(Integer)
     client_request_id: Mapped[uuid.UUID] = mapped_column(Uuid)
+
+
+class Vote(Base):
+    """Голос участника за идею (D-033).
+
+    Первичный ключ (idea_id, voter_id): второй голос того же участника за ту же идею
+    отвергает сама БД. При удалении идеи её голоса удаляются каскадом.
+    """
+
+    __tablename__ = "votes"
+    __table_args__ = (Index("ix_votes_contest_voter", "contest_id", "voter_id"),)
+
+    idea_id: Mapped[int] = mapped_column(
+        ForeignKey("ideas.id", ondelete="CASCADE"), primary_key=True
+    )
+    voter_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    contest_id: Mapped[int] = mapped_column(ForeignKey("contests.id", ondelete="CASCADE"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
