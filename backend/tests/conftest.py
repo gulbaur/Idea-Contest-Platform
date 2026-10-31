@@ -15,7 +15,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
@@ -23,7 +23,7 @@ from sqlalchemy.pool import NullPool
 from app.clock import FakeClock
 from app.config import Settings
 from app.main import create_app
-from app.models import Base
+from app.models import Base, User
 from app.seed import seed_demo_users
 from tests.helpers import T0, TEST_PASSWORD
 
@@ -93,3 +93,11 @@ async def client(app):
 async def demo_users(app, clock: FakeClock) -> None:
     async with app.state.sessionmaker() as session:
         await seed_demo_users(session, TEST_PASSWORD, clock)
+
+
+@pytest.fixture
+async def user_ids(app, demo_users) -> dict[str, int]:
+    """Логин демо-пользователя → id в БД."""
+    async with app.state.sessionmaker() as session:
+        rows = await session.execute(select(User.login, User.id))
+        return dict(rows.all())

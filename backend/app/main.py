@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import auth, health
+from app.api import auth, contests, health, ideas
 from app.clock import Clock, SystemClock
 from app.config import Settings
 from app.db import create_engine, create_sessionmaker
@@ -31,4 +31,6 @@ def create_app(settings: Settings | None = None, clock: Clock | None = None) -> 
 
     app.include_router(health.router)
     app.include_router(auth.router)
+    app.include_router(contests.router)
+    app.include_router(ideas.router)
     return app

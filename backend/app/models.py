@@ -1,9 +1,22 @@
 """Таблицы БД. Схема создаётся миграциями Alembic (backend/migrations), не create_all()."""
 
+import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, MetaData, String
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    MetaData,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 # Явные имена ограничений: одинаковые в моделях и миграциях,
@@ -54,3 +67,60 @@ class UserSession(Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class Contest(Base):
+    """Конкурс. Фаза не хранится, а вычисляется по срокам и серверному времени (D-007)."""
+
+    __tablename__ = "contests"
+    __table_args__ = (
+        CheckConstraint("submission_deadline < voting_deadline", name="deadlines_ordered"),
+        # Повтор запроса создания с тем же client_request_id не создаёт второй конкурс (D-031).
+        UniqueConstraint(
+            "created_by", "client_request_id", name="uq_contests_created_by_client_request_id"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    topic: Mapped[str] = mapped_column(String(200))
+    submission_deadline: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    voting_deadline: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    client_request_id: Mapped[uuid.UUID] = mapped_column(Uuid)
+    # Номер версии состояния конкурса: +1 при каждом изменении внутри конкурса (D-013, D-029).
+    revision: Mapped[int] = mapped_column(BigInteger)
+
+
+class ContestParticipant(Base):
+    """Список участников конкурса (D-009): только они подают идеи, голосуют и получают письма."""
+
+    __tablename__ = "contest_participants"
+
+    contest_id: Mapped[int] = mapped_column(
+        ForeignKey("contests.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True, index=True)
+
+
+class Idea(Base):
+    __tablename__ = "ideas"
+    __table_args__ = (
+        UniqueConstraint(
+            "author_id", "client_request_id", name="uq_ideas_author_id_client_request_id"
+        ),
+        # Порядок идей и правило ничьей: раньше поданная → меньший id (D-008).
+        Index("ix_ideas_contest_order", "contest_id", "submitted_at", "id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contest_id: Mapped[int] = mapped_column(ForeignKey("contests.id", ondelete="CASCADE"))
+    author_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text)
+    # Время первой подачи; при правке не меняется (D-008).
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Версия для защиты от правки устаревших данных из другой вкладки (D-013, D-031).
+    version: Mapped[int] = mapped_column(Integer)
+    client_request_id: Mapped[uuid.UUID] = mapped_column(Uuid)

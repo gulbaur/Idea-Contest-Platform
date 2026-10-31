@@ -64,6 +64,10 @@ async def get_current_user(
     # Сессия действует строго до expires_at: в момент expires_at она уже недействительна.
     if clock.now() >= session.expires_at:
         raise _unauthorized()
+    # Завершаем короткую транзакцию чтения: обработчик начнёт свою с нуля и сможет
+    # выбрать уровень изоляции (снимок) или взять блокировку конкурса (изменения).
+    # expire_on_commit=False — загруженный объект user остаётся доступным.
+    await db.commit()
     return CurrentUser(user=user, session_id=session.id)
 
 
