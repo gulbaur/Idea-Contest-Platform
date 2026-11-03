@@ -2,7 +2,8 @@
 # файл .env необязателен; описание переменных — .env.example и README.
 #
 #   docker compose up --build                                  — запустить сервис
-#   docker compose --profile test run --rm --build tests       — запустить тесты
+#   docker compose --profile test run --rm --build tests            — тесты backend
+#   docker compose --profile test run --rm --build frontend-tests   — тесты frontend
 
 name: idea-contest
 
@@ -45,6 +46,28 @@ services:
       timeout: 3s
       retries: 20
       start_period: 5s
+
+  frontend:
+    # Интерфейс: nginx раздаёт сборку Vue и проксирует /api и WebSocket на backend (D-048).
+    build:
+      context: ./frontend
+      target: runtime
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  frontend-tests:
+    profiles: ["test"]
+    build:
+      context: ./frontend
+      target: test
 
   tests:
     profiles: ["test"]

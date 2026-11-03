@@ -12,7 +12,7 @@ from app.access import ensure_organizer, load_visible_contest
 from app.deps import ClockDep, CurrentUserDep, DbSession, HubDep
 from app.domain import Phase, phase_at, ranking_key
 from app.jobs import plan_jobs
-from app.models import Contest, ContestParticipant, Idea, Job, Role, User, Vote
+from app.models import Contest, ContestParticipant, Idea, Job, JobKind, Role, User, Vote
 from app.schemas import AuthorOut, ContestSummary, IdeaOut, IdPath, Title
 
 router = APIRouter(prefix="/api", tags=["contests"])
@@ -44,6 +44,21 @@ class ContestStats(BaseModel):
     votes_count: int
 
 
+class ParticipantOut(BaseModel):
+    id: int
+    display_name: str
+
+
+class ScheduleItem(BaseModel):
+    """Задание расписания для экрана организатора (D-051)."""
+
+    kind: str
+    run_at: datetime
+    status: str
+    finished_at: datetime | None
+    note: str | None
+
+
 class ContestSnapshot(BaseModel):
     contest: ContestSummary
     revision: int
@@ -51,6 +66,7 @@ class ContestSnapshot(BaseModel):
     ideas: list[IdeaOut]
     # Только для организатора; участникам — null.
     stats: ContestStats | None = None
+    schedule: list[ScheduleItem] | None = None
     # Только после финала (D-035): первая идея по правилу «голоса → время подачи → id».
     winner_idea_id: int | None = None
 
@@ -262,8 +278,20 @@ async def get_contest(
         ideas.sort(key=lambda i: ranking_key(i.votes_count, i.submitted_at, i.id))
     winner_idea_id = ideas[0].id if phase == Phase.FINISHED and ideas else None
 
-    stats = None
+    stats = schedule = None
     if is_organizer:
+        order = {JobKind.REMIND_SUBMISSION: 0, JobKind.REMIND_VOTING: 1, JobKind.FINALIZE: 2}
+        jobs = (await db.scalars(select(Job).where(Job.contest_id == contest.id))).all()
+        schedule = [
+            ScheduleItem(
+                kind=job.kind,
+                run_at=job.run_at,
+                status=job.status,
+                finished_at=job.finished_at,
+                note=job.note,
+            )
+            for job in sorted(jobs, key=lambda j: order[JobKind(j.kind)])
+        ]
         stats = ContestStats(
             participants_count=await db.scalar(
                 select(func.count()).where(ContestParticipant.contest_id == contest.id)
@@ -287,8 +315,28 @@ async def get_contest(
         server_time=now,
         ideas=ideas,
         stats=stats,
+        schedule=schedule,
         winner_idea_id=winner_idea_id,
     )
+
+
+@router.get("/contests/{contest_id}/participants", response_model=list[ParticipantOut])
+async def list_participants(
+    contest_id: IdPath, current: CurrentUserDep, db: DbSession
+) -> list[ParticipantOut]:
+    """Участники конкурса — только организатору (D-051).
+
+    Отдельно от снимка: в снимке нет имён до финала, и это проверяется тестами анонимности.
+    """
+    ensure_organizer(current.user)
+    contest = await load_visible_contest(db, contest_id, current.user)
+    rows = await db.execute(
+        select(User.id, User.display_name)
+        .join(ContestParticipant, ContestParticipant.user_id == User.id)
+        .where(ContestParticipant.contest_id == contest.id)
+        .order_by(User.display_name, User.id)
+    )
+    return [ParticipantOut(id=row.id, display_name=row.display_name) for row in rows]
 
 
 def _idea_fields(idea: Idea) -> dict:

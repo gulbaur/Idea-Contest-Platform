@@ -278,7 +278,9 @@ class JobRunner:
             job.finished_at = now
             await db.commit()
 
-        self._hub.mail_changed(recipients)  # только после COMMIT (D-039)
+        # Только после COMMIT (D-039): письма — получателям, расписание — организаторам.
+        self._hub.mail_changed(recipients)
+        self._hub.schedule_changed(job.contest_id)
         return JobOutcome(job.id, job.kind, status, note, tuple(recipients))
 
     async def _record_failure(
@@ -293,6 +295,7 @@ class JobRunner:
         else:
             job.run_at = now + RETRY_STEP * job.attempts
         await db.commit()
+        self._hub.schedule_changed(job.contest_id)
         return JobOutcome(job.id, job.kind, job.status, job.last_error)
 
     async def _execute(

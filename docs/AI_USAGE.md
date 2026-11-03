@@ -28,5 +28,8 @@
 |---|---|---|
 | Шаблон миграции `script.py.mako` и структура `env.py` Alembic | `backend/migrations/` | Стандартные шаблоны Alembic (`alembic init -t async`), написаны вручную по их образцу и сокращены — https://alembic.sqlalchemy.org/ |
 | Официальные Docker-образы `python:3.13-slim`, `postgres:17-alpine` | `backend/Dockerfile`, `compose.yaml` | Docker Hub (официальные образы) |
+| Официальные Docker-образы `node:24-alpine`, `nginx:1.28-alpine` | `frontend/Dockerfile` | Docker Hub (официальные образы) |
+| Конфигурация Vite (`vite.config.js`, `index.html`) | `frontend/` | Написаны вручную по документации Vite и Vitest; генератор `npm create vite` / `create-vue` не использовался. Значки интерфейса — собственные простые рисунки, сторонний набор значков не использовался |
+| Образ `mcr.microsoft.com/playwright/python:v1.58.0-noble` | только для проверки этапа 6 (не в репозитории) | Microsoft Playwright — браузер для ручной проверки интерфейса скриптами во временной папке |
 
 Таблица дополняется при каждом использовании генератора (например, `npm create vite`) или заимствованного решения.

@@ -551,3 +551,41 @@ def test_letter_time_is_utc_with_label():
     moment = datetime(2026, 1, 17, 14, 30, tzinfo=timezone(timedelta(hours=5)))
     assert _when(moment) == "17.01.2026 09:30 UTC"
     assert _when(datetime(2026, 1, 17, 9, 30, tzinfo=UTC)) == "17.01.2026 09:30 UTC"
+
+
+# --- экран организатора: участники и расписание (D-051) ----------------------
+
+
+async def test_organizer_snapshot_shows_participants_and_schedule(client, app, t, cid, clock):
+    participants = await client.get(f"/api/contests/{cid}/participants", headers=auth(t["organizer"]))
+    assert [p["display_name"] for p in participants.json()] == [
+        "Анна Смирнова", "Борис Котов", "Вера Орлова", "Глеб Лебедев",
+    ]
+    snap = (await snapshot(client, t["organizer"], cid)).json()
+    assert [(j["kind"], j["status"]) for j in snap["schedule"]] == [
+        ("remind_submission", "pending"), ("remind_voting", "pending"), ("finalize", "pending"),
+    ]
+
+    clock.set(REMIND_SUB)
+    await app.state.jobs.run_due()
+    item = (await snapshot(client, t["organizer"], cid)).json()["schedule"][0]
+    assert (item["status"], item["note"], item["finished_at"] is not None) == ("done", "писем: 4", True)
+
+    # Участникам — ни списка участников, ни расписания.
+    assert (await snapshot(client, t["anna"], cid)).json()["schedule"] is None
+    response = await client.get(f"/api/contests/{cid}/participants", headers=auth(t["anna"]))
+    assert response.status_code == 403
+
+
+async def test_schedule_signal_goes_only_to_organizers(client, app, t, cid, clock, open_tab):
+    await idea(client, t["anna"], cid)
+    org, anna = await open_tab(t["organizer"]), await open_tab(t["anna"])
+    clock.set(REMIND_VOTE)  # оба напоминания выполняются: о подаче — пропущено, о голосовании — отправлено
+    await app.state.jobs.run_due()
+
+    received = []
+    await org.ws.send('{"type": "ping"}')
+    while (message := await org.next()) != {"type": "pong"}:
+        received.append(message)
+    assert {"type": "schedule_changed", "contest_id": cid} in received
+    await anna.expect_nothing()  # anna — автор единственной идеи: писем и сигналов ей нет

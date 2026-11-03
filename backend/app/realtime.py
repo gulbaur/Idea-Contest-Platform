@@ -164,6 +164,13 @@ class Hub:
         for event in self._contest_created_events:
             event.set()
 
+    def schedule_changed(self, contest_id: int) -> None:
+        """Выполнено задание расписания — обновить экран организатора (D-051)."""
+        self._deliver(
+            {"type": "schedule_changed", "contest_id": contest_id},
+            lambda c: c.role == Role.ORGANIZER,
+        )
+
     def mail_changed(self, recipient_ids: Iterable[int]) -> None:
         """Появились письма: обновить почту получателей и журнал организаторов (D-045)."""
         recipients = frozenset(recipient_ids)
