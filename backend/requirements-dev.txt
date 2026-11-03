@@ -1,5 +1,6 @@
-# Зависимости для тестов (D-025).
+# Зависимости для тестов (D-025; websockets — D-041).
 -r requirements.txt
 pytest==9.2.0
 pytest-asyncio==1.4.1
 httpx==0.28.1
+websockets==17.3

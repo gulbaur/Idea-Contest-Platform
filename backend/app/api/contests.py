@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from app.access import ensure_organizer, load_visible_contest
-from app.deps import ClockDep, CurrentUserDep, DbSession
+from app.deps import ClockDep, CurrentUserDep, DbSession, HubDep
 from app.domain import Phase, phase_at, ranking_key
 from app.models import Contest, ContestParticipant, Idea, Role, User, Vote
 from app.schemas import AuthorOut, ContestSummary, IdeaOut, IdPath, Title
@@ -88,6 +88,7 @@ async def create_contest(
     current: CurrentUserDep,
     db: DbSession,
     clock: ClockDep,
+    hub: HubDep,
 ) -> ContestSummary:
     ensure_organizer(current.user)
     user = current.user
@@ -153,6 +154,7 @@ async def create_contest(
         [{"contest_id": contest_id, "user_id": uid} for uid in sorted(participant_ids)],
     )
     await db.commit()
+    hub.contest_created(contest_id, participant_ids)  # только после COMMIT (D-039)
     contest = await db.get(Contest, contest_id)
     return _summary(contest, now)
 

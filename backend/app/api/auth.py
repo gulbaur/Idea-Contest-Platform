@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import delete, select
 
-from app.deps import ClockDep, CurrentUserDep, DbSession
+from app.deps import ClockDep, CurrentUserDep, DbSession, HubDep
 from app.models import User, UserSession
 from app.schemas import StorableText
 from app.security import (
@@ -76,10 +76,11 @@ async def login(payload: LoginIn, request: Request, db: DbSession, clock: ClockD
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(current: CurrentUserDep, db: DbSession) -> Response:
+async def logout(current: CurrentUserDep, db: DbSession, hub: HubDep) -> Response:
     # Удаляется только сессия этого токена: другие вкладки того же пользователя остаются в системе.
     await db.execute(delete(UserSession).where(UserSession.id == current.session_id))
     await db.commit()
+    hub.close_session(current.session_id)  # WebSocket этой вкладки тоже закрывается (D-039)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

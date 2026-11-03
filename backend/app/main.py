@@ -11,10 +11,11 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.api import auth, contests, health, ideas, votes
+from app.api import auth, contests, health, ideas, realtime, votes
 from app.clock import Clock, SystemClock
 from app.config import Settings
 from app.db import create_engine, create_sessionmaker
+from app.realtime import DeadlineTicker, Hub
 
 
 async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -37,7 +38,10 @@ def create_app(settings: Settings | None = None, clock: Clock | None = None) -> 
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        # Тесты HTTP-запросов lifespan не запускают и управляют задачей сроков сами.
+        app.state.deadlines.start()
         yield
+        await app.state.deadlines.stop()
         await engine.dispose()
 
     app = FastAPI(title="Конкурс идей", version="0.1.0", lifespan=lifespan)
@@ -45,6 +49,10 @@ def create_app(settings: Settings | None = None, clock: Clock | None = None) -> 
     app.state.engine = engine
     app.state.sessionmaker = create_sessionmaker(engine)
     app.state.clock = clock or SystemClock()
+    app.state.hub = Hub(app.state.sessionmaker, app.state.clock, settings.ws_queue_limit)
+    app.state.deadlines = DeadlineTicker(
+        app.state.sessionmaker, app.state.clock, app.state.hub, settings.deadline_max_sleep_seconds
+    )
     app.add_exception_handler(RequestValidationError, _validation_error)
 
     app.include_router(health.router)
@@ -52,4 +60,5 @@ def create_app(settings: Settings | None = None, clock: Clock | None = None) -> 
     app.include_router(contests.router)
     app.include_router(ideas.router)
     app.include_router(votes.router)
+    app.include_router(realtime.router)
     return app

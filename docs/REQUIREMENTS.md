@@ -5,7 +5,7 @@
 Статусы: ⬜ не начато · 🟡 частично / в работе · ✅ выполнено и подтверждено проверкой · ❌ не выполнено.
 Статус ✅ ставится только при наличии запущенной проверки или другого свидетельства.
 
-Последнее обновление: этап 3 (2026-10-31).
+Последнее обновление: этап 4 (2026-11-03).
 
 ## Общие требования
 
@@ -21,9 +21,9 @@
 | G8 | Предварительные требования для развёртывания описаны | Т8 | README «Предварительные требования» | — | 🟡 (дополнится frontend; финальная проверка — приёмка) |
 | G9 | Быстрый локальный запуск (Docker Compose) | Т9, П | `compose.yaml`, `backend/Dockerfile`; миграции и демо-данные при старте | `docker compose up --build -d --wait` → db и backend healthy (журнал, этап 1) | 🟡 (без frontend) |
 | G10 | Внешние сервисы эмулированы (почта) | Т10, П | решение — D-016 | — | ⬜ |
-| G11 | Работает при двух одновременно открытых клиентах | Т11, П | — | — | ⬜ |
+| G11 | Работает при двух одновременно открытых клиентах | Т11, П | независимые сессии вкладок (D-003); WebSocket — соединение на вкладку, сигналы после коммита (D-039) | `test_two_tabs_*`, `test_submission_signals_only_organizer_and_author` (две вкладки автора), `test_logout_closes_only_this_tabs_connection`, `test_parallel_votes_each_signal_unique_revision_and_last_matches_snapshot` | 🟡 (сервер — да; браузер — этапы 6–7) |
 | G12 | Честное описание состояния проекта | Т12, П | README «Текущее состояние» | — | 🟡 |
-| G13 | Доказуемость работоспособности | Т13, П | тесты backend, журнал проверок; проверка тестов поломкой кода | 144 теста после исправлений по проверке качества (журнал, REVIEW.md) | 🟡 |
+| G13 | Доказуемость работоспособности | Т13, П | тесты backend, журнал проверок; проверка тестов поломкой кода | 169 тестов к этапу 4 (журнал); проверка тестов поломкой кода на каждом этапе | 🟡 |
 
 ## Ожидаемые результаты сдачи
 
@@ -49,17 +49,17 @@
 | F6 | Финал: результаты, авторы раскрываются | З7 | снимок конкурса в фазе «финал»: авторы, `votes_count`, порядок, `winner_idea_id` (D-035) | `test_everyone_sees_results_and_winner_after_final`, `test_finished_everyone_sees_authors` | 🟡 (API; интерфейс — этап 6) |
 | F7 | Финал: письмо победителю и всем участникам, без дубля для победителя | З7, П | решение — D-012 | — | ⬜ |
 | F8 | Экран организатора: число идей, число проголосовавших людей, текущие результаты | З7, П | `stats` (участники, идеи, `voters_count` = COUNT DISTINCT, голоса) и счёт идей во время голосования (D-035, D-037) | `test_organizer_sees_live_results_during_voting`, `test_voters_count_counts_people_not_votes`, `test_deleting_idea_removes_its_votes_atomically` | 🟡 (данные — да; экран — этап 6) |
-| F9 | Раунды закрываются сами в назначенное время | З7 | решение — D-007, D-015 | — | ⬜ |
-| F10 | Идея/правка после закрытия приёма и голос/отзыв после закрытия голосования не принимаются, даже со старой страницы | З7, П | фаза вычисляется по серверному времени после блокировки конкурса (D-007, D-029) | `test_submission_closes_exactly_at_deadline`, `test_stale_page_cannot_submit_after_deadline`, `test_edit_rejected_exactly_at_deadline_and_later`, `test_phase_boundaries` | 🟡 (идеи — да; голоса — этап 3) |
-| F11 | Во время подачи чужие идеи не видны (API и WebSocket) | З7, П | фильтр в SQL-запросе снимка (D-028); WS — сигналы без данных (D-014) | `test_submission_participant_sees_only_own_ideas` (проверяется весь текст JSON), `test_submission_organizer_sees_only_counters` | 🟡 (API — да; WebSocket — этап 4) |
+| F9 | Раунды закрываются сами в назначенное время | З7 | фаза по серверному времени (D-007); в момент срока — сигнал `phase_changed` (D-040) | `test_phase_boundaries`, `test_deadline_tick_signals_phase_change_once`, `test_background_ticker_announces_deadline_when_clock_passes_it`; живая проверка — сигнал через 11–23 мс после срока | 🟡 (сервер — да; переключение экрана — этап 6) |
+| F10 | Идея/правка после закрытия приёма и голос/отзыв после закрытия голосования не принимаются, даже со старой страницы | З7, П | фаза вычисляется по серверному времени после блокировки конкурса (D-007, D-029) | `test_submission_closes_exactly_at_deadline`, `test_stale_page_cannot_submit_after_deadline`, `test_edit_rejected_exactly_at_deadline_and_later`, `test_vote_accepted_until_last_moment_and_rejected_exactly_at_deadline`, `test_revoke_before_deadline_and_rejected_after`, `test_phase_boundaries` | ✅ (сервер) |
+| F11 | Во время подачи чужие идеи не видны (API и WebSocket) | З7, П | фильтр в SQL-запросе снимка (D-028); голосование не раскрывает чужие идеи (D-038); WS — сигналы без данных и только организатору и автору (D-039) | `test_submission_participant_sees_only_own_ideas`, `test_during_submission_others_ideas_look_nonexistent`, `test_submission_signals_only_organizer_and_author`, `test_signals_carry_no_contest_data_for_any_role` | ✅ (сервер) |
 | F12 | Во время голосования видны все идеи без авторов | З7 | снимок конкурса в фазе «голосование» (D-028) | `test_voting_everyone_sees_all_ideas_without_authors` (участник, участник без идей, организатор; имена авторов не встречаются в JSON) | 🟡 (API готов; интерфейс — этап 6) |
 | F13 | За свою идею проголосовать нельзя (сервер) | З7, П | проверка `idea.author_id` в `POST /api/ideas/{id}/vote` (D-034) | `test_cannot_vote_for_own_idea`; поломка кода — тест упал | ✅ (сервер) |
 | F14 | Голос можно отозвать до закрытия голосования | З7 | `DELETE /api/ideas/{id}/vote`, фаза по серверному времени (D-034) | `test_revoke_before_deadline_and_rejected_after`, `test_repeated_revoke_and_vote_again` | 🟡 (API; интерфейс — этап 6) |
-| F15 | Организатор видит изменения результатов без обновления страницы | З7 | решение — D-014 | — | ⬜ |
-| F16 | Остальные видят результаты только после финала | З7 | `votes_count`, статистика и победитель скрыты от участников до финала (D-035); порядок идей — по подаче | `test_results_hidden_from_participants_during_voting`, `test_voting_stats_only_for_organizer` | 🟡 (API; WebSocket — этап 4) |
+| F15 | Организатор видит изменения результатов без обновления страницы | З7 | сигнал `contest_changed` организатору после каждого голоса, отзыва, удаления (D-039) → перечитывание снимка | `test_vote_signals_only_organizer_and_voter`, `test_parallel_votes_each_signal_unique_revision_and_last_matches_snapshot` | 🟡 (сигнал — да; экран — этап 6) |
+| F16 | Остальные видят результаты только после финала | З7 | `votes_count`, статистика и победитель скрыты от участников до финала (D-035); сигналы о голосах участникам не отправляются, о финале — `phase_changed` (D-039, D-040) | `test_results_hidden_from_participants_during_voting`, `test_voting_stats_only_for_organizer`, `test_vote_signals_only_organizer_and_voter` | 🟡 (сервер — да; экран — этап 6) |
 | F17 | Одно напоминание за сутки до закрытия раунда только тем, кто не участвовал | З7, П | решение — D-010, D-015 | — | ⬜ |
 | F18 | При ничьей побеждает более ранняя идея; правило видно заранее | З7, П | `ranking_key` (голоса → `submitted_at` → id), `submitted_at` не меняется при правке (D-008, D-035); текст правила — README и интерфейс (этап 6) | `test_tie_is_won_by_earlier_idea_even_after_edit`, `test_tie_with_identical_submit_time_is_won_by_lower_id`, `test_no_votes_means_earliest_idea_wins`, `test_no_ideas_means_no_winner`, `test_ranking.py`; поломка правила — 3 теста упали | 🟡 (правило — да; показ участникам в интерфейсе — этап 6) |
-| F19 | Удалённая во время голосования идея исчезает у всех сразу вместе с отданными за неё голосами | З7, П | `DELETE /api/ideas/{id}` под блокировкой конкурса; голоса — `ON DELETE CASCADE` в той же транзакции (D-011, D-029, D-033) | `test_deleting_idea_removes_its_votes_atomically`, `test_parallel_vote_and_delete_leave_no_orphan_votes` (5 повторов) | 🟡 (удаление с голосами — да; «сразу у всех» — WebSocket, этап 4) |
+| F19 | Удалённая во время голосования идея исчезает у всех сразу вместе с отданными за неё голосами | З7, П | `DELETE /api/ideas/{id}` под блокировкой конкурса; голоса — `ON DELETE CASCADE` в той же транзакции (D-011, D-029, D-033); сигнал всем участникам (D-039) | `test_deleting_idea_removes_its_votes_atomically`, `test_parallel_vote_and_delete_leave_no_orphan_votes`, `test_delete_during_voting_signals_everyone_in_contest` | 🟡 (сервер — да; экран — этап 6) |
 
 ## Дополнительные требования пользователя
 
@@ -72,7 +72,7 @@
 | P5 | Задания и записи об исполнении в PostgreSQL; работа после перезапуска без повторов | П | решение — D-015 | — | ⬜ |
 | P6 | `REMINDER_LEAD` (по умолчанию 24 ч); демо-конкурсы во всех фазах; быстрый конкурс | П | решение — D-015 | — | ⬜ |
 | P7 | Интерфейс с состояниями загрузки, ошибок, пустых списков | П | — | — | ⬜ |
-| P8 | Тесты на PostgreSQL, управляемые часы, браузерные E2E, одна команда | П | D-025, D-026; `backend/tests/conftest.py`, `FakeClock` | `docker compose --profile test run --rm --build tests` → 144 passed (исправления по проверке качества); `test_session_expires_exactly_at_expires_at` | 🟡 (E2E — этап 7) |
+| P8 | Тесты на PostgreSQL, управляемые часы, браузерные E2E, одна команда | П | D-025, D-026; `backend/tests/conftest.py`, `FakeClock` | `docker compose --profile test run --rm --build tests` → 169 passed (этап 4); `test_session_expires_exactly_at_expires_at` | 🟡 (E2E — этап 7) |
 | P9 | `.gitattributes` с LF; кроссплатформенные инструкции | П | `.gitattributes` (D-018); команды README одинаковы для всех ОС, где различаются — даны варианты | `git check-attr`, `git ls-files --eol` — журнал этапов 0–1 | 🟡 (проверка на Linux/macOS — приёмка) |
 | P10 | Документация: README, REQUIREMENTS, DECISIONS, DEVELOPMENT_LOG, PROMPTS, AI_USAGE, CLAUDE.md, PLAN | П | файлы созданы на этапе 0 | — | 🟡 |
 | P11 | Правила поведения зафиксированы до реализации (пустой конкурс, границы, гонки, роль организатора, удаление, состав получателей) | П | DECISIONS D-005 … D-016 | — | ✅ |

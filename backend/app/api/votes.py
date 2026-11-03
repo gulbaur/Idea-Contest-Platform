@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.access import conflict, forbidden, load_visible_contest, not_found
 from app.clock import Clock
-from app.deps import ClockDep, CurrentUser, CurrentUserDep, DbSession
+from app.deps import ClockDep, CurrentUser, CurrentUserDep, DbSession, HubDep
 from app.domain import Phase, phase_at
 from app.models import Contest, Idea, Role, Vote
 from app.schemas import IdPath
@@ -58,7 +58,12 @@ async def _lock_for_voting(
 
 @router.post("/ideas/{idea_id}/vote", response_model=VoteOut, status_code=status.HTTP_201_CREATED)
 async def vote(
-    idea_id: IdPath, response: Response, current: CurrentUserDep, db: DbSession, clock: ClockDep
+    idea_id: IdPath,
+    response: Response,
+    current: CurrentUserDep,
+    db: DbSession,
+    clock: ClockDep,
+    hub: HubDep,
 ) -> VoteOut:
     contest, idea = await _lock_for_voting(db, idea_id, current, clock)
     if idea.author_id == current.user.id:
@@ -83,12 +88,14 @@ async def vote(
 
     contest.revision += 1
     await db.commit()
+    # Счёт видит только организатор; голосующему — для его других вкладок (D-039).
+    await hub.contest_changed(contest.id, contest.revision, restrict_to=current.user.id)
     return VoteOut(idea_id=idea.id, voted=True)
 
 
 @router.delete("/ideas/{idea_id}/vote", status_code=status.HTTP_204_NO_CONTENT)
 async def revoke_vote(
-    idea_id: IdPath, current: CurrentUserDep, db: DbSession, clock: ClockDep
+    idea_id: IdPath, current: CurrentUserDep, db: DbSession, clock: ClockDep, hub: HubDep
 ) -> Response:
     contest, idea = await _lock_for_voting(db, idea_id, current, clock)
 
@@ -100,4 +107,5 @@ async def revoke_vote(
     if deleted is not None:  # повторный отзыв ничего не удаляет и revision не меняет
         contest.revision += 1
         await db.commit()
+        await hub.contest_changed(contest.id, contest.revision, restrict_to=current.user.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

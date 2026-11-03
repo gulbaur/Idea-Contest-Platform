@@ -9,7 +9,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.access import conflict, forbidden, load_visible_contest, not_found
-from app.deps import ClockDep, CurrentUser, CurrentUserDep, DbSession
+from app.deps import ClockDep, CurrentUser, CurrentUserDep, DbSession, HubDep
 from app.domain import Phase, phase_at
 from app.models import Contest, Idea, Role
 from app.schemas import Description, IdeaOut, IdPath, Title
@@ -53,6 +53,7 @@ async def submit_idea(
     current: CurrentUserDep,
     db: DbSession,
     clock: ClockDep,
+    hub: HubDep,
 ) -> IdeaOut:
     user_id = current.user.id
     contest = await load_visible_contest(db, contest_id, current.user, lock=True)
@@ -102,6 +103,8 @@ async def submit_idea(
 
     contest.revision += 1
     await db.commit()
+    # Чужие идеи во время подачи не видны: сигнал — только организаторам и автору (D-039).
+    await hub.contest_changed(contest.id, contest.revision, restrict_to=user_id)
     return _own_idea_out(await db.get(Idea, idea_id))
 
 
@@ -129,7 +132,12 @@ async def _lock_own_idea(
 
 @router.put("/ideas/{idea_id}", response_model=IdeaOut)
 async def update_idea(
-    idea_id: IdPath, payload: IdeaUpdateIn, current: CurrentUserDep, db: DbSession, clock: ClockDep
+    idea_id: IdPath,
+    payload: IdeaUpdateIn,
+    current: CurrentUserDep,
+    db: DbSession,
+    clock: ClockDep,
+    hub: HubDep,
 ) -> IdeaOut:
     contest, idea = await _lock_own_idea(db, idea_id, current)
 
@@ -154,21 +162,26 @@ async def update_idea(
         idea.updated_at = now  # submitted_at не меняется: правило ничьей (D-008)
         contest.revision += 1
         await db.commit()
+        await hub.contest_changed(contest.id, contest.revision, restrict_to=current.user.id)
     return _own_idea_out(idea)
 
 
 @router.delete("/ideas/{idea_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_idea(
-    idea_id: IdPath, current: CurrentUserDep, db: DbSession, clock: ClockDep
+    idea_id: IdPath, current: CurrentUserDep, db: DbSession, clock: ClockDep, hub: HubDep
 ) -> Response:
     contest, idea = await _lock_own_idea(db, idea_id, current)
 
     now = clock.now()
-    if phase_at(contest.submission_deadline, contest.voting_deadline, now) == Phase.FINISHED:
+    phase = phase_at(contest.submission_deadline, contest.voting_deadline, now)
+    if phase == Phase.FINISHED:
         raise conflict("Конкурс завершён: идею больше нельзя удалить")
 
     # Голоса за идею (этап 3) удаляются в этой же транзакции каскадом БД (D-013).
     await db.execute(delete(Idea).where(Idea.id == idea.id))
     contest.revision += 1
     await db.commit()
+    # Во время голосования идея исчезает у всех; во время подачи её видел только автор.
+    restrict_to = current.user.id if phase == Phase.SUBMISSION else None
+    await hub.contest_changed(contest.id, contest.revision, restrict_to=restrict_to)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

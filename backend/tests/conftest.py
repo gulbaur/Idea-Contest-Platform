@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 
 import pytest
+import uvicorn
 from alembic import command
 from alembic.config import Config
 from httpx import ASGITransport, AsyncClient
@@ -70,7 +71,14 @@ def clock() -> FakeClock:
 
 @pytest.fixture
 def settings(database_url: str) -> Settings:
-    return Settings(database_url=database_url, demo_password=TEST_PASSWORD, session_ttl_hours=24)
+    return Settings(
+        database_url=database_url,
+        demo_password=TEST_PASSWORD,
+        session_ttl_hours=24,
+        # Короткие ожидания WebSocket, чтобы тесты не ждали секундами (D-039, D-040).
+        ws_auth_timeout_seconds=0.3,
+        deadline_max_sleep_seconds=0.05,
+    )
 
 
 @pytest.fixture
@@ -87,6 +95,24 @@ async def app(settings: Settings, clock: FakeClock):
 async def client(app):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
+
+
+@pytest.fixture
+async def ws_url(app):
+    """Настоящий сервер uvicorn на свободном порту — для тестов WebSocket (D-041).
+
+    Работает в том же цикле событий, что и тест, поэтому HTTP-запросы через `client`
+    и соединения WebSocket обслуживает один и тот же объект приложения.
+    """
+    config = uvicorn.Config(app, host="127.0.0.1", port=0, lifespan="off", log_level="warning")
+    server = uvicorn.Server(config)
+    task = asyncio.create_task(server.serve())
+    while not server.started:
+        await asyncio.sleep(0.01)
+    port = server.servers[0].sockets[0].getsockname()[1]
+    yield f"ws://127.0.0.1:{port}/api/ws"
+    server.should_exit = True
+    await task
 
 
 @pytest.fixture

@@ -16,3 +16,9 @@ class Settings(BaseSettings):
     # Публичный пароль демо-аккаунтов: синтетическое значение, не секрет (D-004).
     demo_password: str = "demo-password"
     seed_demo_data: bool = True
+
+    # WebSocket (D-039, D-040): сколько ждать сообщения со входом; сколько сигналов
+    # может ждать отправки одному клиенту; как долго фоновая задача сроков может спать.
+    ws_auth_timeout_seconds: float = 5.0
+    ws_queue_limit: int = 100
+    deadline_max_sleep_seconds: float = 30.0

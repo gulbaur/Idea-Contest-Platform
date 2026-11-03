@@ -1,6 +1,7 @@
 """Общие зависимости FastAPI: часы и текущий пользователь."""
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
@@ -11,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.clock import Clock
 from app.db import get_db
 from app.models import User, UserSession
+from app.realtime import Hub
 from app.security import hash_session_token
 
 
@@ -18,8 +20,13 @@ def get_clock(request: Request) -> Clock:
     return request.app.state.clock
 
 
+def get_hub(request: Request) -> Hub:
+    return request.app.state.hub
+
+
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 ClockDep = Annotated[Clock, Depends(get_clock)]
+HubDep = Annotated[Hub, Depends(get_hub)]
 
 # auto_error=False: отсутствие заголовка обрабатываем сами, чтобы ответ был единообразным (401).
 _bearer = HTTPBearer(auto_error=False, description="Токен из POST /api/auth/login")
@@ -39,6 +46,23 @@ def _unauthorized() -> HTTPException:
     )
 
 
+async def find_session(
+    db: AsyncSession, token: str, now: datetime
+) -> tuple[UserSession, User] | None:
+    """Действующая сессия по токену и её пользователь, иначе None (HTTP и WebSocket)."""
+    row = (
+        await db.execute(
+            select(UserSession, User)
+            .join(User, User.id == UserSession.user_id)
+            .where(UserSession.token_hash == hash_session_token(token))
+        )
+    ).first()
+    # Сессия действует строго до expires_at: в момент expires_at она уже недействительна.
+    if row is None or now >= row[0].expires_at:
+        return None
+    return row[0], row[1]
+
+
 async def get_current_user(
     db: DbSession,
     clock: ClockDep,
@@ -51,19 +75,10 @@ async def get_current_user(
     """
     if credentials is None:
         raise _unauthorized()
-    row = (
-        await db.execute(
-            select(UserSession, User)
-            .join(User, User.id == UserSession.user_id)
-            .where(UserSession.token_hash == hash_session_token(credentials.credentials))
-        )
-    ).first()
-    if row is None:
+    found = await find_session(db, credentials.credentials, clock.now())
+    if found is None:
         raise _unauthorized()
-    session, user = row
-    # Сессия действует строго до expires_at: в момент expires_at она уже недействительна.
-    if clock.now() >= session.expires_at:
-        raise _unauthorized()
+    session, user = found
     # Завершаем короткую транзакцию чтения: обработчик начнёт свою с нуля и сможет
     # выбрать уровень изоляции (снимок) или взять блокировку конкурса (изменения).
     # expire_on_commit=False — загруженный объект user остаётся доступным.
