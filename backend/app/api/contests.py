@@ -2,10 +2,9 @@
 
 import uuid
 from datetime import datetime
-from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Response, status
-from pydantic import AwareDatetime, BaseModel, Field, StringConstraints
+from pydantic import AwareDatetime, BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 
@@ -13,7 +12,7 @@ from app.access import ensure_organizer, load_visible_contest
 from app.deps import ClockDep, CurrentUserDep, DbSession
 from app.domain import Phase, phase_at, ranking_key
 from app.models import Contest, ContestParticipant, Idea, Role, User, Vote
-from app.schemas import AuthorOut, ContestSummary, IdeaOut
+from app.schemas import AuthorOut, ContestSummary, IdeaOut, IdPath, Title
 
 router = APIRouter(prefix="/api", tags=["contests"])
 
@@ -25,7 +24,7 @@ class EmployeeOut(BaseModel):
 
 
 class ContestCreateIn(BaseModel):
-    topic: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+    topic: Title
     # AwareDatetime: время без часового пояса отклоняется с 422 (D-032).
     submission_deadline: AwareDatetime
     voting_deadline: AwareDatetime
@@ -174,7 +173,7 @@ async def list_contests(current: CurrentUserDep, db: DbSession, clock: ClockDep)
 
 @router.get("/contests/{contest_id}", response_model=ContestSnapshot)
 async def get_contest(
-    contest_id: int, current: CurrentUserDep, db: DbSession, clock: ClockDep
+    contest_id: IdPath, current: CurrentUserDep, db: DbSession, clock: ClockDep
 ) -> ContestSnapshot:
     """Всё, что пользователь может видеть в конкурсе прямо сейчас (D-028).
 

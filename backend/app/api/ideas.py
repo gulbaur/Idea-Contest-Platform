@@ -12,7 +12,7 @@ from app.access import conflict, forbidden, load_visible_contest, not_found
 from app.deps import ClockDep, CurrentUser, CurrentUserDep, DbSession
 from app.domain import Phase, phase_at
 from app.models import Contest, Idea, Role
-from app.schemas import Description, IdeaOut, Title
+from app.schemas import Description, IdeaOut, IdPath, Title
 
 router = APIRouter(prefix="/api", tags=["ideas"])
 
@@ -47,7 +47,7 @@ def _own_idea_out(idea: Idea) -> IdeaOut:
     "/contests/{contest_id}/ideas", response_model=IdeaOut, status_code=status.HTTP_201_CREATED
 )
 async def submit_idea(
-    contest_id: int,
+    contest_id: IdPath,
     payload: IdeaCreateIn,
     response: Response,
     current: CurrentUserDep,
@@ -129,7 +129,7 @@ async def _lock_own_idea(
 
 @router.put("/ideas/{idea_id}", response_model=IdeaOut)
 async def update_idea(
-    idea_id: int, payload: IdeaUpdateIn, current: CurrentUserDep, db: DbSession, clock: ClockDep
+    idea_id: IdPath, payload: IdeaUpdateIn, current: CurrentUserDep, db: DbSession, clock: ClockDep
 ) -> IdeaOut:
     contest, idea = await _lock_own_idea(db, idea_id, current)
 
@@ -159,7 +159,7 @@ async def update_idea(
 
 @router.delete("/ideas/{idea_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_idea(
-    idea_id: int, current: CurrentUserDep, db: DbSession, clock: ClockDep
+    idea_id: IdPath, current: CurrentUserDep, db: DbSession, clock: ClockDep
 ) -> Response:
     contest, idea = await _lock_own_idea(db, idea_id, current)
 

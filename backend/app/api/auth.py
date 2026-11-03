@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import datetime, timedelta
+from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -9,6 +10,7 @@ from sqlalchemy import delete, select
 
 from app.deps import ClockDep, CurrentUserDep, DbSession
 from app.models import User, UserSession
+from app.schemas import StorableText
 from app.security import (
     DUMMY_PASSWORD_HASH,
     hash_session_token,
@@ -20,7 +22,8 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 class LoginIn(BaseModel):
-    login: str = Field(min_length=1, max_length=64)
+    # Логин уходит в запрос к БД — недопустимые для неё символы отклоняются (D-038).
+    login: Annotated[str, Field(min_length=1, max_length=64), StorableText]
     password: str = Field(min_length=1, max_length=256)
 
 
@@ -42,6 +45,9 @@ class LoginOut(BaseModel):
 @router.post("/login", response_model=LoginOut)
 async def login(payload: LoginIn, request: Request, db: DbSession, clock: ClockDep) -> LoginOut:
     user = await db.scalar(select(User).where(User.login == payload.login.strip().lower()))
+    # Завершаем транзакцию чтения до проверки пароля: соединение возвращается в пул
+    # и не простаивает десятки миллисекунд scrypt (D-038). Объект user остаётся доступен.
+    await db.commit()
     # Пароль проверяется и для несуществующего логина (против хеша-пустышки),
     # чтобы по времени ответа нельзя было узнать, какие логины существуют.
     # scrypt занимает десятки миллисекунд процессора — выполняем в отдельном потоке,

@@ -3,15 +3,34 @@
 from datetime import datetime
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from fastapi import Path
+from pydantic import AfterValidator, BaseModel, ConfigDict, StringConstraints
 
 from app.domain import Phase
 
+# Символ NUL PostgreSQL в тексте сохранить не может — без этой проверки запрос
+# падал бы с 500 уже в БД; отклоняем его с 422 (D-038). Одиночные суррогаты
+# Юникода отклоняет сама Pydantic при разборе JSON.
+
+
+def _storable(value: str) -> str:
+    if "\x00" in value:
+        raise ValueError("Текст содержит недопустимый символ NUL")
+    return value
+
+
+StorableText = AfterValidator(_storable)
+
 # Пробелы по краям обрезаются; строка из одних пробелов не проходит min_length (D-032).
-Title = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
-Description = Annotated[
-    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=5000)
+Title = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200), StorableText
 ]
+Description = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=5000), StorableText
+]
+
+# Номер конкурса или идеи в адресе: столбцы INTEGER, больший номер БД не примет (D-038).
+IdPath = Annotated[int, Path(ge=1, le=2_147_483_647)]
 
 
 class ContestSummary(BaseModel):

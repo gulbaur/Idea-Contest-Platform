@@ -89,13 +89,22 @@ async def test_organizer_cannot_vote(client, world):
     assert response.json()["detail"] == "Организатор не голосует"
 
 
+NOT_FOUND = (404, {"detail": "Идея не найдена"})
+
+
+def outcome(response) -> tuple[int, dict]:
+    return response.status_code, response.json()
+
+
 async def test_non_participant_cannot_vote(client, world):
-    assert (await vote(client, world["t"]["dina"], world["a1"])).status_code == 404
+    # Ответ полностью совпадает с ответом на несуществующую идею (D-038).
+    assert outcome(await vote(client, world["t"]["dina"], world["a1"])) == NOT_FOUND
+    assert outcome(await revoke(client, world["t"]["dina"], world["a1"])) == NOT_FOUND
 
 
 async def test_unknown_idea_is_404(client, world):
-    assert (await vote(client, world["t"]["boris"], 999999)).status_code == 404
-    assert (await revoke(client, world["t"]["boris"], 999999)).status_code == 404
+    assert outcome(await vote(client, world["t"]["boris"], 999999)) == NOT_FOUND
+    assert outcome(await revoke(client, world["t"]["boris"], 999999)) == NOT_FOUND
 
 
 # --- сроки ------------------------------------------------------------------
@@ -103,9 +112,18 @@ async def test_unknown_idea_is_404(client, world):
 
 async def test_voting_not_open_during_submission(client, world, clock):
     clock.set(SUBMISSION_END - TICK)
-    response = await vote(client, world["t"]["boris"], world["a1"])
+    response = await vote(client, world["t"]["boris"], world["b1"])  # своя идея — видна
     assert response.status_code == 409
     assert response.json()["detail"] == "Голосование ещё не началось"
+
+
+async def test_during_submission_others_ideas_look_nonexistent(client, world, clock):
+    """По ответам на голос нельзя узнать, что коллеги уже подали идеи (D-038)."""
+    clock.set(SUBMISSION_END - TICK)
+    boris = world["t"]["boris"]
+    assert outcome(await vote(client, boris, world["a1"])) == NOT_FOUND
+    assert outcome(await revoke(client, boris, world["a1"])) == NOT_FOUND
+    assert outcome(await vote(client, boris, 999999)) == NOT_FOUND
 
 
 async def test_vote_accepted_until_last_moment_and_rejected_exactly_at_deadline(

@@ -6,12 +6,29 @@ uvicorn вызывает `create_app()` как фабрику (`--factory`); т�
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from app.api import auth, contests, health, ideas, votes
 from app.clock import Clock, SystemClock
 from app.config import Settings
 from app.db import create_engine, create_sessionmaker
+
+
+async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """Ответ 422 как у FastAPI, но без поля `input` — присланного значения (D-038).
+
+    Стандартный ответ повторяет присланное значение. Одиночный суррогат Юникода
+    в нём не кодируется в UTF-8, и вместо 422 сервер падал с 500. Заодно в ответ
+    не возвращается, например, присланный пароль.
+    """
+    errors = [{k: v for k, v in error.items() if k != "input"} for error in exc.errors()]
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        content={"detail": jsonable_encoder(errors)},
+    )
 
 
 def create_app(settings: Settings | None = None, clock: Clock | None = None) -> FastAPI:
@@ -28,6 +45,7 @@ def create_app(settings: Settings | None = None, clock: Clock | None = None) -> 
     app.state.engine = engine
     app.state.sessionmaker = create_sessionmaker(engine)
     app.state.clock = clock or SystemClock()
+    app.add_exception_handler(RequestValidationError, _validation_error)
 
     app.include_router(health.router)
     app.include_router(auth.router)
