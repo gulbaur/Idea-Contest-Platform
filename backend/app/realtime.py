@@ -93,12 +93,18 @@ class Hub:
         self._connections: set[Connection] = set()
         # Список участников конкурса после создания не меняется (D-009) — его можно кешировать.
         self._participants: dict[int, frozenset[int]] = {}
-        # Будит DeadlineTicker, когда появился конкурс с новыми сроками.
-        self.contest_created_event = asyncio.Event()
+        # События фоновых задач (сроки, задания): их будит появление конкурса с новыми сроками.
+        self._contest_created_events: list[asyncio.Event] = []
 
     @property
     def connections(self) -> frozenset[Connection]:
         return frozenset(self._connections)
+
+    def contest_created_event(self) -> asyncio.Event:
+        """Новое событие, которое устанавливается при каждом создании конкурса."""
+        event = asyncio.Event()
+        self._contest_created_events.append(event)
+        return event
 
     def register(
         self,
@@ -155,7 +161,17 @@ class Hub:
             {"type": "contests_changed"},
             lambda c: c.role == Role.ORGANIZER or c.user_id in participants,
         )
-        self.contest_created_event.set()
+        for event in self._contest_created_events:
+            event.set()
+
+    def mail_changed(self, recipient_ids: Iterable[int]) -> None:
+        """Появились письма: обновить почту получателей и журнал организаторов (D-045)."""
+        recipients = frozenset(recipient_ids)
+        if recipients:
+            self._deliver(
+                {"type": "mail_changed"},
+                lambda c: c.role == Role.ORGANIZER or c.user_id in recipients,
+            )
 
     async def _deliver_to_contest(self, contest_id: int, message: dict) -> None:
         participants = await self._participants_of(contest_id)
@@ -203,7 +219,8 @@ class DeadlineTicker:
         self._task: asyncio.Task | None = None
 
     def start(self) -> None:
-        self._task = asyncio.create_task(self._run(self._clock.now()))
+        wakeup = self._hub.contest_created_event()
+        self._task = asyncio.create_task(self._run(self._clock.now(), wakeup))
 
     async def stop(self) -> None:
         if self._task is not None:
@@ -241,8 +258,7 @@ class DeadlineTicker:
             return self._max_sleep
         return min(self._max_sleep, max(0.0, (min(upcoming) - now).total_seconds()))
 
-    async def _run(self, since: datetime) -> None:
-        wakeup = self._hub.contest_created_event
+    async def _run(self, since: datetime, wakeup: asyncio.Event) -> None:
         while True:
             # Сбрасываем до проверки: конкурс, созданный во время проверки, снова разбудит цикл.
             wakeup.clear()

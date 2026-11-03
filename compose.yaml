@@ -32,6 +32,8 @@ services:
       SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-24}
       DEMO_PASSWORD: ${DEMO_PASSWORD:-demo-password}
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+      # Срок напоминания (D-046): по умолчанию сутки; меньше — только для демонстрации.
+      REMINDER_LEAD: ${REMINDER_LEAD:-24:00:00}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:

@@ -1,5 +1,7 @@
 """Вспомогательные функции тестов."""
 
+import asyncio
+import json
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -81,3 +83,22 @@ async def vote(client: AsyncClient, token: str, idea_id: int):
 
 async def revoke(client: AsyncClient, token: str, idea_id: int):
     return await client.delete(f"/api/ideas/{idea_id}/vote", headers=auth(token))
+
+
+class Tab:
+    """Одна вкладка браузера: своё соединение WebSocket."""
+
+    def __init__(self, ws) -> None:
+        self.ws = ws
+        self.ready: dict | None = None
+
+    async def next(self, timeout: float = 2.0) -> dict:
+        return json.loads(await asyncio.wait_for(self.ws.recv(), timeout))
+
+    async def expect_nothing(self) -> None:
+        await self.ws.send(json.dumps({"type": "ping"}))
+        assert await self.next() == {"type": "pong"}
+
+    async def close_code(self) -> int:
+        await asyncio.wait_for(self.ws.wait_closed(), 2.0)
+        return self.ws.close_code

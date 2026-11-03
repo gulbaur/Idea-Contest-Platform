@@ -8,11 +8,13 @@
 """
 
 import asyncio
+import json
 import os
 from pathlib import Path
 
 import pytest
 import uvicorn
+from websockets.asyncio.client import connect
 from alembic import command
 from alembic.config import Config
 from httpx import ASGITransport, AsyncClient
@@ -26,7 +28,7 @@ from app.config import Settings
 from app.main import create_app
 from app.models import Base, User
 from app.seed import seed_demo_users
-from tests.helpers import T0, TEST_PASSWORD
+from tests.helpers import T0, TEST_PASSWORD, Tab
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 
@@ -78,6 +80,7 @@ def settings(database_url: str) -> Settings:
         # Короткие ожидания WebSocket, чтобы тесты не ждали секундами (D-039, D-040).
         ws_auth_timeout_seconds=0.3,
         deadline_max_sleep_seconds=0.05,
+        jobs_max_sleep_seconds=0.05,
     )
 
 
@@ -113,6 +116,25 @@ async def ws_url(app):
     yield f"ws://127.0.0.1:{port}/api/ws"
     server.should_exit = True
     await task
+
+
+@pytest.fixture
+async def open_tab(ws_url):
+    """Открыть «вкладку»: соединение WebSocket с входом по токену."""
+    opened: list = []
+
+    async def _open(token: str) -> Tab:
+        ws = await connect(ws_url)
+        opened.append(ws)
+        await ws.send(json.dumps({"type": "auth", "token": token}))
+        tab = Tab(ws)
+        tab.ready = await tab.next()
+        assert tab.ready["type"] == "ready", tab.ready
+        return tab
+
+    yield _open
+    for ws in opened:
+        await ws.close()
 
 
 @pytest.fixture

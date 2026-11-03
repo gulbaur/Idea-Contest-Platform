@@ -31,43 +31,6 @@ PARTICIPANTS = ("anna", "boris", "vera")
 SIGNAL_KEYS = {"type", "contest_id", "revision"}
 
 
-class Tab:
-    """Одна вкладка браузера: своё соединение WebSocket."""
-
-    def __init__(self, ws) -> None:
-        self.ws = ws
-        self.ready: dict | None = None
-
-    async def next(self, timeout: float = 2.0) -> dict:
-        return json.loads(await asyncio.wait_for(self.ws.recv(), timeout))
-
-    async def expect_nothing(self) -> None:
-        await self.ws.send(json.dumps({"type": "ping"}))
-        assert await self.next() == {"type": "pong"}
-
-    async def close_code(self) -> int:
-        await asyncio.wait_for(self.ws.wait_closed(), 2.0)
-        return self.ws.close_code
-
-
-@pytest.fixture
-async def open_tab(ws_url):
-    opened: list = []
-
-    async def _open(token: str) -> Tab:
-        ws = await connect(ws_url)
-        opened.append(ws)
-        await ws.send(json.dumps({"type": "auth", "token": token}))
-        tab = Tab(ws)
-        tab.ready = await tab.next()
-        assert tab.ready["type"] == "ready", tab.ready
-        return tab
-
-    yield _open
-    for ws in opened:
-        await ws.close()
-
-
 @pytest.fixture
 async def raw_ws(ws_url):
     opened: list = []

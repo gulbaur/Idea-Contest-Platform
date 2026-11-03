@@ -142,3 +142,76 @@ class Vote(Base):
     voter_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
     contest_id: Mapped[int] = mapped_column(ForeignKey("contests.id", ondelete="CASCADE"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class JobKind(StrEnum):
+    REMIND_SUBMISSION = "remind_submission"
+    REMIND_VOTING = "remind_voting"
+    FINALIZE = "finalize"
+
+
+class JobStatus(StrEnum):
+    PENDING = "pending"
+    DONE = "done"
+    SKIPPED = "skipped"
+    FAILED = "failed"
+
+
+class Job(Base):
+    """Запланированное действие конкурса (D-042). Выполняет обработчик app/jobs.py (D-043)."""
+
+    __tablename__ = "jobs"
+    __table_args__ = (
+        UniqueConstraint("contest_id", "kind", name="uq_jobs_contest_id_kind"),
+        CheckConstraint(
+            "kind IN ('remind_submission', 'remind_voting', 'finalize')", name="kind_valid"
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'done', 'skipped', 'failed')", name="status_valid"
+        ),
+        # Поиск наступивших заданий: status = 'pending' AND run_at <= now.
+        Index("ix_jobs_status_run_at", "status", "run_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contest_id: Mapped[int] = mapped_column(ForeignKey("contests.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(32))
+    run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(16))
+    attempts: Mapped[int] = mapped_column(Integer)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Пояснение результата: сколько писем, почему пропущено (видно в БД).
+    note: Mapped[str | None] = mapped_column(Text)
+
+
+class EmailKind(StrEnum):
+    REMINDER_SUBMISSION = "reminder_submission"
+    REMINDER_VOTING = "reminder_voting"
+    FINAL = "final"
+
+
+class Email(Base):
+    """Письмо почтовой заглушки (D-016, D-045): хранится в БД, реально не отправляется."""
+
+    __tablename__ = "emails"
+    __table_args__ = (
+        # Одно письмо каждого вида на человека в конкурсе: напоминание на раунд, итог (D-012).
+        UniqueConstraint(
+            "contest_id", "recipient_id", "kind", name="uq_emails_contest_id_recipient_id_kind"
+        ),
+        CheckConstraint(
+            "kind IN ('reminder_submission', 'reminder_voting', 'final')", name="kind_valid"
+        ),
+        Index("ix_emails_recipient_created", "recipient_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contest_id: Mapped[int] = mapped_column(ForeignKey("contests.id", ondelete="CASCADE"))
+    recipient_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    # Адрес на момент отправки — так письмо выглядело бы в настоящей почте.
+    to_address: Mapped[str] = mapped_column(String(254))
+    kind: Mapped[str] = mapped_column(String(32))
+    subject: Mapped[str] = mapped_column(String(300))
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

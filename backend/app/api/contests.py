@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import AwareDatetime, BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
@@ -11,7 +11,8 @@ from sqlalchemy.dialects.postgresql import insert
 from app.access import ensure_organizer, load_visible_contest
 from app.deps import ClockDep, CurrentUserDep, DbSession, HubDep
 from app.domain import Phase, phase_at, ranking_key
-from app.models import Contest, ContestParticipant, Idea, Role, User, Vote
+from app.jobs import plan_jobs
+from app.models import Contest, ContestParticipant, Idea, Job, Role, User, Vote
 from app.schemas import AuthorOut, ContestSummary, IdeaOut, IdPath, Title
 
 router = APIRouter(prefix="/api", tags=["contests"])
@@ -84,6 +85,7 @@ async def list_employees(current: CurrentUserDep, db: DbSession) -> list[Employe
 @router.post("/contests", response_model=ContestSummary, status_code=status.HTTP_201_CREATED)
 async def create_contest(
     payload: ContestCreateIn,
+    request: Request,
     response: Response,
     current: CurrentUserDep,
     db: DbSession,
@@ -152,6 +154,17 @@ async def create_contest(
     await db.execute(
         insert(ContestParticipant),
         [{"contest_id": contest_id, "user_id": uid} for uid in sorted(participant_ids)],
+    )
+    # Расписание создаётся в той же транзакции: конкурс без заданий невозможен (D-042).
+    await db.execute(
+        insert(Job),
+        plan_jobs(
+            contest_id,
+            created_at=now,
+            submission_deadline=payload.submission_deadline,
+            voting_deadline=payload.voting_deadline,
+            lead=request.app.state.settings.reminder_lead,
+        ),
     )
     await db.commit()
     hub.contest_created(contest_id, participant_ids)  # только после COMMIT (D-039)
