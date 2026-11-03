@@ -270,3 +270,5 @@
   - голос boris — сигнал organizer и boris, у anna — ничего;
   - финал: снимок anna — `finished`, победитель есть; выход boris — WebSocket закрыт кодом 4401.
 - Перезапуск backend: остановка без ошибок (`Application shutdown complete`).
+
+**Коммит:** `c89e7c9` — feat(backend): этап 4 — WebSocket-сигналы, сигнал о сроках.
