@@ -77,7 +77,18 @@ async function submitIdea(payload) {
     notify.success('Идея отправлена. До начала голосования её видите только вы.')
     reload()
   } catch (failure) {
-    failed(failure)
+    if (failure.detail?.code === 'request_id_reused') {
+      // Первая отправка формы уже принята (ответ потерялся), а текст с тех пор изменился.
+      // Новый идентификатор: следующее нажатие подаст новый текст отдельной идеей (D-053).
+      submitRequestId = newRequestId()
+      notify.error(
+        'Предыдущая отправка этой формы уже принята — идея есть в «Моих идеях». ' +
+          'Новый текст не отправлен: нажмите «Отправить идею» ещё раз, чтобы подать его отдельной идеей.',
+      )
+      reload()
+    } else {
+      failed(failure)
+    }
   } finally {
     submitPending.value = false
   }
@@ -94,6 +105,17 @@ function cancelEdit() {
   editBase.value = null
   editConflict.value = false
 }
+
+// Переход к другому конкурсу без пересоздания страницы: форма и её идентификатор — новые,
+// иначе отправка в другой конкурс пришла бы с прежним client_request_id (D-053).
+watch(
+  () => props.id,
+  () => {
+    submitRequestId = newRequestId()
+    ideaForm.value?.reset()
+    cancelEdit()
+  },
+)
 
 async function saveEdit(idea, payload) {
   if (editPending.value) return

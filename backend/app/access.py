@@ -19,6 +19,20 @@ def conflict(detail: str | dict) -> HTTPException:
     return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
 
 
+def request_id_reused() -> HTTPException:
+    """Тот же `client_request_id` пришёл с другими данными или в другой конкурс (D-053).
+
+    Это не повтор той же отправки формы, поэтому ничего не создаётся. Поле `code` позволяет
+    интерфейсу выдать форме новый идентификатор.
+    """
+    return conflict(
+        {
+            "message": "Этот запрос уже выполнен с другими данными — повторно ничего не создано",
+            "code": "request_id_reused",
+        }
+    )
+
+
 def ensure_organizer(user: User) -> None:
     if user.role != Role.ORGANIZER:
         raise forbidden("Действие доступно только организатору")

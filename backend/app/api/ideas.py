@@ -8,7 +8,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.access import conflict, forbidden, load_visible_contest, not_found
+from app.access import conflict, forbidden, load_visible_contest, not_found, request_id_reused
 from app.deps import ClockDep, CurrentUser, CurrentUserDep, DbSession, HubDep
 from app.domain import Phase, phase_at
 from app.models import Contest, Idea, Role
@@ -61,23 +61,17 @@ async def submit_idea(
         raise forbidden("Организатор не подаёт идеи")
 
     # Повтор уже выполненной подачи возвращает ту же идею — даже если срок уже прошёл.
-    existing = await db.scalar(
-        select(Idea).where(
-            Idea.author_id == user_id, Idea.client_request_id == payload.client_request_id
-        )
-    )
+    existing = await _find_by_request_id(db, user_id, payload.client_request_id)
     if existing is not None:
-        if existing.contest_id != contest.id:
-            raise conflict("Этот client_request_id уже использован для другой идеи")
         response.status_code = status.HTTP_200_OK
-        return _own_idea_out(existing)
+        return _replayed(existing, contest.id, payload)
 
     # «Сейчас» — после получения блокировки конкурса (D-029).
     now = clock.now()
     if phase_at(contest.submission_deadline, contest.voting_deadline, now) != Phase.SUBMISSION:
         raise conflict("Приём идей закрыт")
 
-    idea_id = await db.scalar(
+    idea = await db.scalar(
         insert(Idea)
         .values(
             contest_id=contest.id,
@@ -90,22 +84,45 @@ async def submit_idea(
             client_request_id=payload.client_request_id,
         )
         .on_conflict_do_nothing(index_elements=["author_id", "client_request_id"])
-        .returning(Idea.id)
+        .returning(Idea)
     )
-    if idea_id is None:  # страховка: ограничение БД сработало раньше проверки выше
-        existing = await db.scalar(
-            select(Idea).where(
-                Idea.author_id == user_id, Idea.client_request_id == payload.client_request_id
-            )
-        )
+    if idea is None:
+        # Ограничение БД сработало: одновременный запрос с тем же идентификатором успел
+        # раньше. Он мог быть и в другой конкурс (тот заблокирован другой блокировкой),
+        # поэтому сверяем так же, как в основном пути (D-053).
+        existing = await _find_by_request_id(db, user_id, payload.client_request_id)
+        if existing is None:  # успел и удалить её из другой вкладки
+            raise conflict("Идея с этим запросом только что изменилась — обновите страницу")
         response.status_code = status.HTTP_200_OK
-        return _own_idea_out(existing)
+        return _replayed(existing, contest.id, payload)
 
+    # Ответ — из строки, которую вернул INSERT: после фиксации идею уже могли удалить (REVIEW Г5).
+    out = _own_idea_out(idea)
     contest.revision += 1
     await db.commit()
     # Чужие идеи во время подачи не видны: сигнал — только организаторам и автору (D-039).
     await hub.contest_changed(contest.id, contest.revision, restrict_to=user_id)
-    return _own_idea_out(await db.get(Idea, idea_id))
+    return out
+
+
+async def _find_by_request_id(db: AsyncSession, user_id: int, request_id: uuid.UUID) -> Idea | None:
+    return await db.scalar(
+        select(Idea)
+        .where(Idea.author_id == user_id, Idea.client_request_id == request_id)
+        .execution_options(populate_existing=True)
+    )
+
+
+def _replayed(existing: Idea, contest_id: int, payload: IdeaCreateIn) -> IdeaOut:
+    """Повтор той же отправки → та же идея; тот же идентификатор с другим запросом → 409.
+
+    Текст сверяется, пока идею не правили (версия 1). После правки старый повтор отличить
+    от «другого запроса» нельзя, а новой идеи он всё равно не создаёт.
+    """
+    other_text = (existing.title, existing.description) != (payload.title, payload.description)
+    if existing.contest_id != contest_id or (existing.version == 1 and other_text):
+        raise request_id_reused()
+    return _own_idea_out(existing)
 
 
 async def _lock_own_idea(

@@ -1,0 +1,37 @@
+# Изолированная проверочная среда (D-056): свой compose-проект, своя БД, без портов на компьютере.
+# Рабочая среда idea-contest и её данные не затрагиваются. Запускается скриптом
+# scripts/check.ps1 (Windows) или scripts/check.sh (Linux, macOS) — вручную не нужно:
+#
+#   docker compose -f compose.yaml -f compose.check.yaml --profile test --profile e2e ...
+#
+# Файлы передаются явно, поэтому локальный compose.override.yaml не подключается.
+
+name: idea-contest-check
+
+services:
+  backend:
+    ports: !reset []
+    environment:
+      # Короткий срок напоминания: в E2E напоминания успевают прийти за минуту (D-055).
+      REMINDER_LEAD: "00:00:10"
+      # Не зависят от локального .env: проверка воспроизводима на любом компьютере.
+      DEMO_PASSWORD: demo-password
+      SEED_DEMO_DATA: "true"
+      SESSION_TTL_HOURS: "24"
+
+  frontend:
+    ports: !reset []
+
+  e2e:
+    profiles: ["e2e"]
+    build:
+      context: ./e2e
+    environment:
+      BASE_URL: http://frontend
+      DEMO_PASSWORD: demo-password
+    volumes:
+      # Снимки экрана и трассы упавших тестов (в Git не попадают).
+      - ./e2e/results:/e2e/results
+    depends_on:
+      frontend:
+        condition: service_healthy

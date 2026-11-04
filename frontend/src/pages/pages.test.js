@@ -191,6 +191,27 @@ describe('создание конкурса', () => {
     expect(router.currentRoute.value.path).toBe('/contests/9')
   })
 
+  it('идентификатор уже использован с другими данными — следующая отправка с новым', async () => {
+    await openForm()
+    await wrapper.find('#topic').setValue('Обеды')
+    const reused = { message: 'Этот запрос уже выполнен с другими данными', code: 'request_id_reused' }
+    api.createContest
+      .mockRejectedValueOnce(new ApiError(409, reused.message, reused))
+      .mockResolvedValueOnce({ ...contestIn('submission'), id: 10 })
+
+    await wrapper.find('form').trigger('submit')
+    answer(true)
+    await flushPromises()
+    expect(wrapper.text()).toContain('Конкурс по первой отправке этой формы уже создан')
+    await wrapper.find('form').trigger('submit')
+    answer(true)
+    await flushPromises()
+
+    const [first, second] = api.createContest.mock.calls.map(([payload]) => payload)
+    expect(second.client_request_id).not.toBe(first.client_request_id)
+    expect(router.currentRoute.value.path).toBe('/contests/10')
+  })
+
   it('отмена в диалоге — ничего не отправляется', async () => {
     await openForm()
     await wrapper.find('#topic').setValue('Тема')

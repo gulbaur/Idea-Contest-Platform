@@ -7,8 +7,9 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import AwareDatetime, BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.access import ensure_organizer, load_visible_contest
+from app.access import ensure_organizer, load_visible_contest, request_id_reused
 from app.deps import ClockDep, CurrentUserDep, DbSession, HubDep
 from app.domain import Phase, phase_at, ranking_key
 from app.jobs import plan_jobs
@@ -98,6 +99,35 @@ async def list_employees(current: CurrentUserDep, db: DbSession) -> list[Employe
     return [EmployeeOut(id=r.id, login=r.login, display_name=r.display_name) for r in rows]
 
 
+async def _employee_ids(db: AsyncSession) -> set[int]:
+    return set((await db.scalars(select(User.id).where(User.role == Role.EMPLOYEE))).all())
+
+
+async def _replayed(
+    db: AsyncSession, existing: Contest, payload: ContestCreateIn, now: datetime
+) -> ContestSummary:
+    """Повтор того же запроса → уже созданный конкурс; тот же идентификатор с другой темой,
+    сроками или участниками → 409, второй конкурс не создаётся (D-053)."""
+    participants = set(
+        (
+            await db.scalars(
+                select(ContestParticipant.user_id).where(ContestParticipant.contest_id == existing.id)
+            )
+        ).all()
+    )
+    requested = (
+        await _employee_ids(db) if payload.participant_ids is None else set(payload.participant_ids)
+    )
+    same = (existing.topic, existing.submission_deadline, existing.voting_deadline) == (
+        payload.topic,
+        payload.submission_deadline,
+        payload.voting_deadline,
+    )
+    if not same or participants != requested:
+        raise request_id_reused()
+    return _summary(existing, now)
+
+
 @router.post("/contests", response_model=ContestSummary, status_code=status.HTTP_201_CREATED)
 async def create_contest(
     payload: ContestCreateIn,
@@ -120,16 +150,14 @@ async def create_contest(
     )
     if existing is not None:
         response.status_code = status.HTTP_200_OK
-        return _summary(existing, now)
+        return await _replayed(db, existing, payload, now)
 
     if payload.submission_deadline <= now:
         raise _invalid("Срок окончания приёма идей должен быть в будущем")
     if payload.voting_deadline <= payload.submission_deadline:
         raise _invalid("Срок окончания голосования должен быть позже окончания приёма идей")
 
-    employee_ids = set(
-        (await db.scalars(select(User.id).where(User.role == Role.EMPLOYEE))).all()
-    )
+    employee_ids = await _employee_ids(db)
     if payload.participant_ids is None:
         participant_ids = employee_ids
     else:
@@ -165,7 +193,7 @@ async def create_contest(
             )
         )
         response.status_code = status.HTTP_200_OK
-        return _summary(existing, now)
+        return await _replayed(db, existing, payload, now)
 
     await db.execute(
         insert(ContestParticipant),

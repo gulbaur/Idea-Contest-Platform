@@ -35,3 +35,6 @@ Thumbs.db
 
 # Локальные переопределения Docker Compose (например, открытый порт БД для DBeaver)
 compose.override.yaml
+
+# Снимки экрана и трассы упавших E2E (D-056)
+e2e/results/

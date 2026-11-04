@@ -433,10 +433,10 @@ async def test_failed_job_rolls_back_its_letters_and_is_retried(app, cid, clock,
 
 
 async def test_job_failing_five_times_is_marked_failed(app, cid, clock, monkeypatch):
-    async def always_fail(self, *args):
+    async def always_fail(*args):
         raise RuntimeError("постоянный сбой")
 
-    monkeypatch.setattr(JobRunner, "_execute", always_fail)
+    monkeypatch.setattr(JobRunner, "execute", staticmethod(always_fail))
     clock.set(REMIND_SUB)
     for _ in range(5):
         await app.state.jobs.run_due()

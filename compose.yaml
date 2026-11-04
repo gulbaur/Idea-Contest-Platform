@@ -4,6 +4,8 @@
 #   docker compose up --build                                  — запустить сервис
 #   docker compose --profile test run --rm --build tests            — тесты backend
 #   docker compose --profile test run --rm --build frontend-tests   — тесты frontend
+#   powershell -ExecutionPolicy Bypass -File scripts\check.ps1 (или sh scripts/check.sh)
+#                                — все проверки, включая E2E, в изолированной среде (D-056)
 
 name: idea-contest
 

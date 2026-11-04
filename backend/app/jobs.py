@@ -269,7 +269,7 @@ class JobRunner:
             try:
                 # Точка сохранения: при ошибке откатываются письма, но не блокировка задания.
                 async with db.begin_nested():
-                    status, note, recipients = await self._execute(db, job, contest, now)
+                    status, note, recipients = await self.execute(db, job, contest, now)
             except Exception as exc:  # noqa: BLE001 — любая ошибка: повторить позже
                 return await self._record_failure(db, job, now, exc)
 
@@ -298,9 +298,15 @@ class JobRunner:
         self._hub.schedule_changed(job.contest_id)
         return JobOutcome(job.id, job.kind, job.status, job.last_error)
 
-    async def _execute(
-        self, db: AsyncSession, job: Job, contest: Contest, now: datetime
+    @staticmethod
+    async def execute(
+        db: AsyncSession, job: Job, contest: Contest, now: datetime
     ) -> tuple[str, str, list[int]]:
+        """Выполняет задание в транзакции вызывающего: письма записаны, статус — вернуть.
+
+        Конкурс должен быть заблокирован вызывающим. Используется обработчиком и демо-данными
+        (app/demo.py), которые так «проигрывают» прошлые задания по тем же правилам.
+        """
         phase = phase_at(contest.submission_deadline, contest.voting_deadline, now)
         kind = JobKind(job.kind)
 
@@ -310,7 +316,7 @@ class JobRunner:
             ranking = await ranked_ideas(db, contest.id)
             users = (await db.scalars(_participants(contest.id))).all()
             letters = [(user, *_final_text(contest, user, ranking)) for user in users]
-            sent = await self._send(db, contest, EmailKind.FINAL, letters, now)
+            sent = await JobRunner._send(db, contest, EmailKind.FINAL, letters, now)
             winner = f"победитель — идея {ranking[0].id}" if ranking else "идей нет"
             return JobStatus.DONE, f"писем: {len(sent)}; {winner}", sent
 
@@ -338,7 +344,7 @@ class JobRunner:
             )
         users = (await db.scalars(statement)).all()
         letters = [(user, *_reminder_text(kind, contest, user)) for user in users]
-        sent = await self._send(db, contest, email_kind, letters, now)
+        sent = await JobRunner._send(db, contest, email_kind, letters, now)
         return JobStatus.DONE, f"писем: {len(sent)}", sent
 
     @staticmethod

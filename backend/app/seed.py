@@ -1,4 +1,7 @@
-"""Демонстрационные аккаунты. Запуск: `python -m app.seed` (идемпотентно).
+"""Демонстрационные аккаунты и конкурсы. Запуск: `python -m app.seed` (идемпотентно).
+
+- аккаунты создаются, если их нет; существующие не меняются;
+- демо-конкурсы (app/demo.py, D-054) — только если в базе ещё нет ни одного конкурса.
 
 Все данные синтетические; адреса в зарезервированном домене example.com.
 """
@@ -11,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.clock import Clock, SystemClock
 from app.config import Settings
 from app.db import create_engine, create_sessionmaker
+from app.demo import create_demo_contests, has_contests
 from app.models import Role, User
 from app.security import hash_password
 
@@ -48,6 +52,17 @@ async def seed_demo_users(session: AsyncSession, password: str, clock: Clock) ->
     return created
 
 
+async def seed_demo_data(session: AsyncSession, settings: Settings, clock: Clock) -> list[str]:
+    """Аккаунты — всегда (недостающие), демо-конкурсы — только в базу без конкурсов."""
+    report = [f"создано демо-пользователей: {await seed_demo_users(session, settings.demo_password, clock)}"]
+    if await has_contests(session):
+        report.append("конкурсы уже есть, демо-конкурсы не добавляются (добавить: python -m app.demo)")
+    else:
+        ids = await create_demo_contests(session, clock, settings.reminder_lead)
+        report.append(f"созданы демо-конкурсы {ids}")
+    return report
+
+
 async def _main() -> None:
     settings = Settings()
     if not settings.seed_demo_data:
@@ -56,8 +71,8 @@ async def _main() -> None:
     engine = create_engine(settings.database_url)
     try:
         async with create_sessionmaker(engine)() as session:
-            created = await seed_demo_users(session, settings.demo_password, SystemClock())
-        print(f"seed: создано демо-пользователей: {created}")
+            for line in await seed_demo_data(session, settings, SystemClock()):
+                print(f"seed: {line}")
     finally:
         await engine.dispose()
 

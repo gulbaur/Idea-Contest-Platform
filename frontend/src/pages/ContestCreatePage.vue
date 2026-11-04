@@ -30,7 +30,7 @@ const touched = ref(false)
 const pending = ref(false)
 const serverError = ref('')
 // Один идентификатор на эту форму: повтор после сбоя сети не создаст второй конкурс (D-031).
-const requestId = newRequestId()
+let requestId = newRequestId()
 
 const PRESETS = [
   { label: 'Демо: 3 + 3 мин', submission: 3 * MINUTE, voting: 6 * MINUTE },
@@ -144,7 +144,16 @@ async function submit() {
     notify.success('Конкурс создан — участники уже видят его в своём списке.')
     await router.push({ name: 'contest', params: { id: contest.id } })
   } catch (failure) {
-    serverError.value = failure.message
+    if (failure.detail?.code === 'request_id_reused') {
+      // Первая отправка формы уже создала конкурс (ответ потерялся), а данные с тех пор
+      // изменились. Новый идентификатор: следующее нажатие создаст конкурс с новыми данными (D-053).
+      requestId = newRequestId()
+      serverError.value =
+        'Конкурс по первой отправке этой формы уже создан — он есть в списке конкурсов. ' +
+        'Нажмите «Создать конкурс» ещё раз, чтобы создать ещё один с новыми данными.'
+    } else {
+      serverError.value = failure.message
+    }
   } finally {
     pending.value = false
   }

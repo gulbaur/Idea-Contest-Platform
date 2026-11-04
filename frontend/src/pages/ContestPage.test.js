@@ -13,6 +13,7 @@ import {
   STATS,
   USERS,
   button,
+  contestIn,
   deferred,
   idea,
   mountAt,
@@ -95,6 +96,59 @@ describe('участник, приём идей', () => {
     expect(ids[0]).toBe(ids[1]) // повтор после сбоя — тот же запрос
     expect(ids[2]).not.toBe(ids[1]) // новая идея — новый запрос
     expect(api.submitIdea.mock.calls[0]).toEqual([7, { title: 'Первая', description: 'Текст', client_request_id: ids[0] }])
+  })
+
+  it('идентификатор уже использован с другим текстом — форма получает новый, текст остаётся', async () => {
+    await open(USERS.anna, snapshot('submission'))
+    const reused = { message: 'Этот запрос уже выполнен с другими данными', code: 'request_id_reused' }
+    api.submitIdea
+      .mockRejectedValueOnce(new ApiError(0, 'Нет связи с сервером.'))
+      .mockRejectedValueOnce(new ApiError(409, reused.message, reused))
+      .mockResolvedValueOnce({ id: 14 })
+
+    await wrapper.find('#new-idea-title').setValue('Первая')
+    await wrapper.find('#new-idea-description').setValue('Текст')
+    await wrapper.find('form.idea-form').trigger('submit')
+    await flushPromises()
+    await wrapper.find('#new-idea-title').setValue('Исправленная') // ответ потерялся, текст поменяли
+    await wrapper.find('form.idea-form').trigger('submit')
+    await flushPromises()
+
+    expect(document.body.textContent).toContain('Предыдущая отправка этой формы уже принята')
+    expect(wrapper.find('#new-idea-title').element.value).toBe('Исправленная')
+    await wrapper.find('form.idea-form').trigger('submit')
+    await flushPromises()
+
+    const ids = api.submitIdea.mock.calls.map(([, payload]) => payload.client_request_id)
+    expect(ids[1]).toBe(ids[0])
+    expect(ids[2]).not.toBe(ids[1]) // иначе форма навсегда застряла бы на 409
+    expect(api.contest.mock.calls.length).toBeGreaterThan(1) // снимок перечитан — видна принятая идея
+  })
+
+  it('переход к другому конкурсу без пересоздания страницы — новая форма и новый идентификатор', async () => {
+    signIn(USERS.anna)
+    api.contest.mockImplementation(async (id) => ({ ...snapshot('submission'), contest: { ...contestIn('submission'), id } }))
+    api.participants.mockResolvedValue([])
+    let router
+    ;({ wrapper, router } = await mountAt('/contests/7'))
+    api.submitIdea.mockRejectedValueOnce(new ApiError(0, 'Нет связи с сервером.')).mockResolvedValueOnce({ id: 15 })
+
+    await wrapper.find('#new-idea-title').setValue('Для седьмого')
+    await wrapper.find('#new-idea-description').setValue('Текст')
+    await wrapper.find('form.idea-form').trigger('submit')
+    await flushPromises()
+    await router.push('/contests/8')
+    await flushPromises()
+
+    expect(wrapper.find('#new-idea-title').element.value).toBe('')
+    await wrapper.find('#new-idea-title').setValue('Для восьмого')
+    await wrapper.find('#new-idea-description').setValue('Текст')
+    await wrapper.find('form.idea-form').trigger('submit')
+    await flushPromises()
+
+    const [[firstContest, first], [secondContest, second]] = api.submitIdea.mock.calls
+    expect([firstContest, secondContest]).toEqual([7, 8])
+    expect(second.client_request_id).not.toBe(first.client_request_id)
   })
 
   it('пустую идею не отправляет — показывает подсказку', async () => {
