@@ -284,11 +284,14 @@ const selected = computed(() => visible.value.find((letter) => letter.id === sel
   min-width: 0;
 }
 
+/* Тема — до двух строк: в одной строке почти все темы обрезались. */
 .subject {
+  display: -webkit-box;
   overflow: hidden;
   font-weight: 650;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .meta {
@@ -366,7 +369,8 @@ const selected = computed(() => visible.value.find((letter) => letter.id === sel
 
 @media (max-width: 860px) {
   .mailbox {
-    grid-template-columns: 1fr;
+    /* minmax(0, …): иначе длинная тема письма в одну строку растягивает колонку шире экрана. */
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .placeholder {

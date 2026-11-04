@@ -102,7 +102,7 @@ const votesLabel = (n) => `${n} ${plural(n, ['голос', 'голоса', 'го
 
 .item {
   display: grid;
-  grid-template-columns: auto 1fr 120px;
+  grid-template-columns: auto minmax(0, 1fr) 120px;
   gap: 16px;
   align-items: center;
   padding: 16px 18px;
@@ -215,7 +215,7 @@ const votesLabel = (n) => `${n} ${plural(n, ['голос', 'голоса', 'го
 
 @media (max-width: 640px) {
   .item {
-    grid-template-columns: auto 1fr;
+    grid-template-columns: auto minmax(0, 1fr);
   }
 
   .score {

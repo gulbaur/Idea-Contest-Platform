@@ -291,7 +291,7 @@ async def get_contest(
         for idea, author_name in (await db.execute(statement)).all():
             out = IdeaOut.model_validate(
                 {
-                    **_idea_fields(idea),
+                    **_idea_fields(idea, own=idea.author_id == user.id),
                     "is_mine": idea.author_id == user.id,
                     "voted_by_me": idea.id in my_votes,
                 }
@@ -367,12 +367,14 @@ async def list_participants(
     return [ParticipantOut(id=row.id, display_name=row.display_name) for row in rows]
 
 
-def _idea_fields(idea: Idea) -> dict:
+def _idea_fields(idea: Idea, *, own: bool) -> dict:
+    # Время и номер правки нужны только автору (для правки). У чужих идей они скрыты:
+    # иначе видно, кто и когда правил идею, — лишняя зацепка к авторству (D-058).
     return {
         "id": idea.id,
         "title": idea.title,
         "description": idea.description,
         "submitted_at": idea.submitted_at,
-        "updated_at": idea.updated_at,
-        "version": idea.version,
+        "updated_at": idea.updated_at if own else None,
+        "version": idea.version if own else None,
     }

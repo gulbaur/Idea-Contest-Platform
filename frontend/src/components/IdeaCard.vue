@@ -15,7 +15,8 @@ const props = defineProps({
 })
 const emit = defineEmits(['edit', 'delete', 'vote', 'revoke'])
 
-const edited = computed(() => props.idea.updated_at !== props.idea.submitted_at)
+// У чужих идей время правки сервер не отдаёт (null), поэтому «изменена» — только у своих.
+const edited = computed(() => Boolean(props.idea.updated_at) && props.idea.updated_at !== props.idea.submitted_at)
 </script>
 
 <template>
@@ -36,8 +37,8 @@ const edited = computed(() => props.idea.updated_at !== props.idea.submitted_at)
       <span class="faint">
         Подана {{ formatDateTime(idea.submitted_at) }}<template v-if="edited"> · изменена</template>
       </span>
-      <div class="spacer" />
-
+      <!-- Кнопки — одной группой: на узком экране переносятся вместе и остаются справа. -->
+      <div class="actions">
       <template v-if="canVote">
         <template v-if="idea.voted_by_me">
           <span class="badge badge-success voted-mark"><Icon name="check" :size="13" /> Вы проголосовали</span>
@@ -78,6 +79,7 @@ const edited = computed(() => props.idea.updated_at !== props.idea.submitted_at)
         <Icon v-else name="trash" />
         Удалить
       </button>
+      </div>
     </div>
   </article>
 </template>
@@ -100,8 +102,11 @@ const edited = computed(() => props.idea.updated_at !== props.idea.submitted_at)
   box-shadow: 0 0 0 3px var(--success-soft);
 }
 
+/* Своя идея — полоса слева (фон, обрезанный по скруглению карточки). */
 .idea.mine {
-  background: linear-gradient(180deg, var(--primary-soft), var(--surface) 70px);
+  background:
+    linear-gradient(var(--primary), var(--primary)) left / 4px 100% no-repeat,
+    var(--surface);
 }
 
 .top {
@@ -134,6 +139,15 @@ const edited = computed(() => props.idea.updated_at !== props.idea.submitted_at)
   align-items: center;
   gap: 8px;
   margin-top: 2px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
 }
 
 .voted-mark {

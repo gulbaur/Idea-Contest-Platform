@@ -463,11 +463,37 @@ async def test_participant_sees_only_own_letters_organizer_sees_all(client, app,
     assert (await client.get("/api/emails", headers=auth(t["anna"]))).json() == []  # подала идею
     assert (await client.get("/api/emails", headers=auth(t["dina"]))).json() == []
 
+    # До финала организатор напоминаний не видит: по их получателям можно вычислить авторов (D-058).
+    assert (await client.get("/api/emails", headers=auth(t["organizer"]))).json() == []
+    clock.set(VOTE_END)
+    await app.state.jobs.run_due()
     journal = (await client.get("/api/emails", headers=auth(t["organizer"]))).json()
-    assert {e["recipient"]["id"] for e in journal} == {user_ids[u] for u in ("boris", "vera", "gleb")}
+    reminders = {e["recipient"]["id"] for e in journal if e["kind"] == "reminder_submission"}
+    assert reminders == {user_ids[u] for u in ("boris", "vera", "gleb")}
+    assert {e["recipient"]["id"] for e in journal if e["kind"] == "final"} == {
+        user_ids[u] for u in ("anna", "boris", "vera", "gleb")
+    }
     filtered = await client.get("/api/emails", params={"contest_id": cid + 1}, headers=auth(t["organizer"]))
     assert filtered.json() == []
     assert (await client.get("/api/emails")).status_code == 401
+
+
+async def test_organizer_sees_reminders_of_other_contest_only_after_its_final(client, app, t, cid, clock, user_ids):
+    """Скрываются напоминания именно незавершённых конкурсов, а не все разом."""
+    later = await create_contest(
+        client, t["organizer"], submission_deadline=VOTE_END + DAY, voting_deadline=VOTE_END + 2 * DAY
+    )
+    clock.set(REMIND_SUB)
+    await app.state.jobs.run_due()  # напоминание о подаче в конкурсе cid
+    clock.set(VOTE_END)
+    await app.state.jobs.run_due()  # конкурс cid завершён
+    clock.set(VOTE_END + DAY - timedelta(hours=1))
+    await app.state.jobs.run_due()  # напоминание о подаче в конкурсе later
+    kinds = {(e["contest_id"], e["kind"]) for e in (await client.get("/api/emails", headers=auth(t["organizer"]))).json()}
+    assert (cid, "final") in kinds and (cid, "reminder_submission") in kinds
+    assert all(contest != later["id"] for contest, _ in kinds)
+    vera = (await client.get("/api/emails", headers=auth(t["vera"]))).json()
+    assert any(e["contest_id"] == later["id"] for e in vera)  # участнице её напоминание видно сразу
 
 
 async def test_letters_are_listed_newest_first(client, app, t, cid, clock):

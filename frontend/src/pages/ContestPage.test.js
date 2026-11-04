@@ -9,6 +9,7 @@ import { realtime } from '../lib/connection.js'
 import { toasts } from '../lib/notify.js'
 import { clearSession } from '../lib/session.js'
 import {
+  NOW,
   SCHEDULE,
   STATS,
   USERS,
@@ -321,12 +322,36 @@ describe('итоги', () => {
   })
 })
 
+describe('отметка «изменена»', () => {
+  it('только у своей правленой идеи: у чужих сервер не отдаёт время правки', async () => {
+    const own = idea(51, 'Своя', { is_mine: true, updated_at: new Date(NOW - 60_000).toISOString(), version: 2 })
+    await open(USERS.anna, snapshot('voting', { ideas: [own, idea(52, 'Чужая')] }))
+    expect(cardOf('Своя').text()).toContain('изменена')
+    expect(cardOf('Чужая').text()).not.toContain('изменена')
+  })
+})
+
 describe('организатор', () => {
   it('во время подачи — только счётчики, без текстов идей', async () => {
     await open(USERS.organizer, snapshot('submission', { stats: STATS, schedule: SCHEDULE }))
     expect(wrapper.find('[data-test=ideas-count]').text()).toBe('2')
     expect(wrapper.text()).toContain('Идеи скрыты до начала голосования')
     expect(wrapper.find('form.idea-form').exists()).toBe(false) // организатор идеи не подаёт
+  })
+
+  it('расписание и статистика — человеческими словами: победитель по названию, «из 4 человек»', async () => {
+    const ideas = [idea(41, 'Лидер', { votes_count: 2, author: { display_name: 'Анна Смирнова' } })]
+    const schedule = [
+      { kind: 'remind_voting', run_at: SCHEDULE[1].run_at, status: 'done', finished_at: SCHEDULE[1].run_at, note: 'писем: 0' },
+      { kind: 'finalize', run_at: SCHEDULE[1].run_at, status: 'done', finished_at: SCHEDULE[1].run_at, note: 'писем: 4; победитель — идея 41' },
+    ]
+    await open(USERS.organizer, snapshot('finished', { ideas, stats: STATS, schedule, winner: 41 }))
+
+    expect(wrapper.text()).toContain('получателей не было')
+    expect(wrapper.text()).toContain('отправлено писем: 4; победила «Лидер»')
+    expect(wrapper.text()).not.toContain('идея 41')
+    expect(wrapper.text()).toContain('из 4')
+    expect(wrapper.text()).toMatch(/человек\s+проголосовал\s/) // 1 из 4 человек проголосовал
   })
 
   it('во время голосования — живые результаты без авторов, статистика, расписание, участники', async () => {
@@ -339,7 +364,7 @@ describe('организатор', () => {
     expect(wrapper.find('[data-test=voters-count]').text()).toContain('1')
     expect(button(wrapper, 'Голосовать')).toBeUndefined()
     expect(wrapper.text()).toContain('Пропущено')
-    expect(wrapper.text()).toContain('писем: 2')
+    expect(wrapper.text()).toContain('отправлено писем: 2')
     expect(api.participants).toHaveBeenCalledWith(7)
     expect(wrapper.text()).toContain('Анна Смирнова') // из списка участников
 

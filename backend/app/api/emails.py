@@ -5,10 +5,10 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
-from app.deps import CurrentUserDep, DbSession
-from app.models import Contest, Email, Role, User
+from app.deps import ClockDep, CurrentUserDep, DbSession
+from app.models import Contest, Email, EmailKind, Role, User
 
 router = APIRouter(prefix="/api", tags=["emails"])
 
@@ -34,10 +34,16 @@ class EmailOut(BaseModel):
 async def list_emails(
     current: CurrentUserDep,
     db: DbSession,
+    clock: ClockDep,
     contest_id: Annotated[int | None, Query(ge=1, le=2_147_483_647)] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 200,
 ) -> list[EmailOut]:
-    """Участник видит только свои письма; организатор — журнал всех писем."""
+    """Участник видит только свои письма; организатор — журнал всех писем.
+
+    Напоминания незавершённого конкурса организатору не показываются: по их получателям
+    видно, кто ещё не подал идею, а значит — кто автор поданных (D-058). После финала
+    авторы раскрыты, и журнал полный.
+    """
     statement = (
         select(Email, Contest.topic, User.display_name)
         .join(Contest, Contest.id == Email.contest_id)
@@ -47,6 +53,10 @@ async def list_emails(
     )
     if current.user.role != Role.ORGANIZER:
         statement = statement.where(Email.recipient_id == current.user.id)
+    else:
+        statement = statement.where(
+            or_(Email.kind == EmailKind.FINAL, Contest.voting_deadline <= clock.now())
+        )
     if contest_id is not None:
         statement = statement.where(Email.contest_id == contest_id)
     return [

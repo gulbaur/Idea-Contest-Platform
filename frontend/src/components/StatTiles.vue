@@ -35,7 +35,9 @@ const share = computed(() =>
           {{ stats.voters_count }} <span class="of">из {{ stats.participants_count }}</span>
         </div>
         <div class="label">
-          {{ plural(stats.voters_count, ['человек проголосовал', 'человека проголосовали', 'человек проголосовали']) }}
+          <!-- «4 из 5 человек проголосовали»: существительное согласуется с общим числом, глагол — с числом проголосовавших. -->
+          {{ plural(stats.participants_count, ['человека', 'человек', 'человек']) }}
+          {{ plural(stats.voters_count, ['проголосовал', 'проголосовали', 'проголосовали']) }}
           · {{ stats.votes_count }} {{ plural(stats.votes_count, ['голос', 'голоса', 'голосов']) }}
         </div>
         <div class="bar" role="progressbar" :aria-valuenow="share" aria-valuemin="0" aria-valuemax="100">
@@ -49,7 +51,7 @@ const share = computed(() =>
 <style scoped>
 .tiles {
   display: grid;
-  grid-template-columns: 1fr 1fr 2fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr);
   gap: 12px;
 }
 
@@ -115,7 +117,7 @@ const share = computed(() =>
 
 @media (max-width: 860px) {
   .tiles {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 
   .wide {

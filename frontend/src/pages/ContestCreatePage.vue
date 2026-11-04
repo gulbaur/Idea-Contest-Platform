@@ -244,8 +244,8 @@ async function submit() {
         <div class="notice">
           <Icon name="bell" class="icon" />
           <span>
-            Напоминание приходит тем, кто ещё не участвовал, за срок <code class="mono">REMINDER_LEAD</code> до конца
-            раунда (по умолчанию — сутки). Если раунд короче, его напоминание не отправляется.
+            За сутки до конца каждого раунда тем, кто ещё не участвовал, придёт напоминание. Если раунд короче
+            суток, напоминания в нём не будет.
             <template v-if="summary?.shortRound"> Короткие сроки — для демонстрации: запустите сервис с небольшим
               <code class="mono">REMINDER_LEAD</code> (см. README).</template>
           </span>
@@ -321,7 +321,7 @@ async function submit() {
 
 .dates {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 16px;
 }
 
@@ -369,7 +369,7 @@ async function submit() {
 
 @media (max-width: 640px) {
   .dates {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .submit-row .btn {

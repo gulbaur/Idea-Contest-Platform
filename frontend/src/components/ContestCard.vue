@@ -17,10 +17,10 @@ const props = defineProps({
 const phase = computed(() => phaseAt(props.contest, props.now))
 const nextStep = computed(() => {
   if (phase.value === 'submission') {
-    return { text: 'до конца приёма идей', left: Date.parse(props.contest.submission_deadline) - props.now }
+    return { left: Date.parse(props.contest.submission_deadline) - props.now }
   }
   if (phase.value === 'voting') {
-    return { text: 'до конца голосования', left: Date.parse(props.contest.voting_deadline) - props.now }
+    return { left: Date.parse(props.contest.voting_deadline) - props.now }
   }
   return null
 })
@@ -31,9 +31,9 @@ const nextStep = computed(() => {
     <div class="row top">
       <PhaseBadge :phase="phase" />
       <span class="spacer" />
-      <span v-if="nextStep" class="left">
-        <Icon name="clock" :size="14" /> {{ formatCountdown(nextStep.left) }}
-        <span class="faint">{{ nextStep.text }}</span>
+      <!-- Фаза уже на значке слева, поэтому здесь только остаток времени до её конца. -->
+      <span v-if="nextStep" class="left" :title="`осталось ${formatCountdown(nextStep.left)}`">
+        <Icon name="clock" :size="14" /> <span class="faint">осталось</span> {{ formatCountdown(nextStep.left) }}
       </span>
       <span v-else class="left faint"><Icon name="trophy" :size="14" /> итоги подведены</span>
     </div>
@@ -56,11 +56,15 @@ const nextStep = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 18px;
+  /* Цвет фазы — полоса сверху. Это фон, а не рамка: фон обрезается по скруглению
+     карточки, а толстая верхняя рамка изгибалась бы дугой вдоль углов. */
+  --accent: var(--phase-submission);
+  padding: 22px 18px 18px;
   border: 1px solid var(--border);
-  border-top: 4px solid var(--phase-submission);
   border-radius: var(--radius-lg);
-  background: var(--surface);
+  background:
+    linear-gradient(var(--accent), var(--accent)) top / 100% 4px no-repeat,
+    var(--surface);
   box-shadow: var(--shadow-sm);
   color: var(--text);
   transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
@@ -73,15 +77,16 @@ const nextStep = computed(() => {
 }
 
 .contest-card.voting {
-  border-top-color: var(--phase-voting);
+  --accent: var(--phase-voting);
 }
 
 .contest-card.finished {
-  border-top-color: var(--phase-finished);
+  --accent: var(--phase-finished);
 }
 
 .top {
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
+  row-gap: 6px;
 }
 
 .left {
@@ -105,7 +110,7 @@ const nextStep = computed(() => {
 
 .dates {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 10px;
   margin: 0;
 }
@@ -121,9 +126,4 @@ dd {
   font-weight: 600;
 }
 
-@media (max-width: 420px) {
-  .left .faint {
-    display: none;
-  }
-}
 </style>

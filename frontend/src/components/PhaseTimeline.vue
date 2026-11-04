@@ -71,7 +71,7 @@ const steps = computed(() => {
 <style scoped>
 .timeline {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   margin: 0;
   padding: 0;
@@ -187,7 +187,7 @@ const steps = computed(() => {
 
 @media (max-width: 720px) {
   .timeline {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>

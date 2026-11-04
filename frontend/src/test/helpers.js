@@ -36,13 +36,14 @@ export function contestIn(phase, extra = {}) {
 }
 
 export function idea(id, title, extra = {}) {
+  const mine = Boolean(extra.is_mine) // у чужих идей сервер не отдаёт время и номер правки (D-058)
   return {
     id,
     title,
     description: `Описание: ${title}`,
     submitted_at: iso(NOW - 10 * 60_000 + id * 1000),
-    updated_at: iso(NOW - 10 * 60_000 + id * 1000),
-    version: 1,
+    updated_at: mine ? iso(NOW - 10 * 60_000 + id * 1000) : null,
+    version: mine ? 1 : null,
     is_mine: false,
     author: null,
     votes_count: null,

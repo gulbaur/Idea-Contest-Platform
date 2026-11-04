@@ -5,10 +5,11 @@ import { RouterLink } from 'vue-router'
 import { formatCountdown, formatDateTime } from '../lib/format.js'
 import Icon from './Icon.vue'
 
-defineProps({
+const props = defineProps({
   schedule: { type: Array, required: true },
   contestId: { type: Number, required: true },
   now: { type: Number, required: true },
+  ideas: { type: Array, default: () => [] }, // чтобы назвать победителя по названию, а не по номеру
 })
 
 const KIND = {
@@ -16,6 +17,17 @@ const KIND = {
   remind_voting: { title: 'Напоминание о голосовании', icon: 'bell' },
   finalize: { title: 'Итоги и письма участникам', icon: 'flag' },
 }
+// Пояснение сервера («писем: 4; победитель — идея 12») — человеческими словами.
+function describe(note) {
+  return note
+    .replace(/^писем: 0(?!\d)/, 'получателей не было')
+    .replace(/^писем: /, 'отправлено писем: ')
+    .replace(/победитель — идея (\d+)/, (text, id) => {
+      const idea = props.ideas.find((item) => item.id === Number(id))
+      return idea ? `победила «${idea.title}»` : text
+    })
+}
+
 const STATUS = {
   pending: { text: 'Запланировано', tone: '' },
   done: { text: 'Выполнено', tone: 'badge-success' },
@@ -38,11 +50,11 @@ const STATUS = {
           <div class="when">
             <span class="badge" :class="STATUS[job.status].tone">{{ STATUS[job.status].text }}</span>
             <span class="faint">{{ formatDateTime(job.finished_at ?? job.run_at) }}</span>
-            <span v-if="job.status === 'pending' && Date.parse(job.run_at) > now" class="faint">
-              · через {{ formatCountdown(Date.parse(job.run_at) - now) }}
-            </span>
           </div>
-          <div v-if="job.note" class="note">{{ job.note }}</div>
+          <div v-if="job.status === 'pending' && Date.parse(job.run_at) > now" class="note faint">
+            через {{ formatCountdown(Date.parse(job.run_at) - now) }}
+          </div>
+          <div v-if="job.note" class="note">{{ describe(job.note) }}</div>
         </div>
       </li>
     </ul>

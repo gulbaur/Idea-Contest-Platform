@@ -397,7 +397,7 @@ async function castVote(idea, revoke = false) {
           </section>
 
           <template v-if="organizer">
-            <SchedulePanel :schedule="snapshot.schedule" :contest-id="contest.id" :now="now" />
+            <SchedulePanel :schedule="snapshot.schedule" :contest-id="contest.id" :now="now" :ideas="ideas" />
             <ParticipantsPanel :contest-id="contest.id" />
           </template>
           <section v-else class="card">
@@ -567,7 +567,7 @@ async function castVote(idea, revoke = false) {
 
 @media (max-width: 980px) {
   .layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .aside {

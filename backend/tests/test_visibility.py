@@ -137,3 +137,25 @@ async def test_snapshot_reports_server_time_and_revision(client, world, clock):
     body, _ = await view(client, world, "anna")
     assert body["revision"] == 3  # создание + две подачи
     assert body["server_time"].startswith(clock.now().strftime("%Y-%m-%dT%H:%M:%S"))
+
+
+async def test_edit_history_of_others_ideas_is_hidden(client, world, clock):
+    """Время и номер правки чужой идеи не раскрываются никому (REVIEW Б3, D-058)."""
+    anna = world["tokens"]["anna"]
+    own = next(i for i in (await view(client, world, "anna"))[0]["ideas"] if i["title"] == ANNA_IDEA)
+    edited = await client.put(
+        f"/api/ideas/{own['id']}",
+        json={"title": ANNA_IDEA, "description": "Новый текст", "version": own["version"]},
+        headers=auth(anna),
+    )
+    assert edited.status_code == 200
+    clock.set(SUBMISSION_END)
+
+    for who in ("boris", "vera", "organizer"):
+        body, _ = await view(client, world, who)
+        others = [i for i in body["ideas"] if not i["is_mine"]]
+        assert others, who
+        assert all(i["updated_at"] is None and i["version"] is None for i in others), who
+
+    mine = next(i for i in (await view(client, world, "anna"))[0]["ideas"] if i["is_mine"])
+    assert (mine["version"], mine["updated_at"] is not None) == (2, True)  # автору — для правки

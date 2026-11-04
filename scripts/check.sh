@@ -44,6 +44,13 @@ e2e() {
   $COMPOSE run --rm e2e
 }
 
+for step in $STEPS; do
+  case $step in
+    backend | frontend | e2e) ;;
+    *) echo "Неизвестный шаг: $step (есть: backend, frontend, e2e)"; exit 2 ;;
+  esac
+done
+
 echo "== Подготовка: чистая проверочная среда и сборка образов"
 $COMPOSE down -v --remove-orphans >/dev/null 2>&1
 $COMPOSE build --quiet || { echo "Сборка образов не удалась"; exit 1; }
@@ -53,7 +60,6 @@ for step in $STEPS; do
     backend) run_step backend $COMPOSE run --rm tests ;;
     frontend) run_step frontend $COMPOSE run --rm frontend-tests ;;
     e2e) run_step e2e e2e ;;
-    *) echo "Неизвестный шаг: $step (есть: backend, frontend, e2e)"; exit 2 ;;
   esac
 done
 

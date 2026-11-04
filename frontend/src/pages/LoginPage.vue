@@ -11,7 +11,7 @@ import { setSession } from '../lib/session.js'
 // Синтетические демо-аккаунты (backend/app/seed.py). Пароль публичный — D-004.
 const DEMO_PASSWORD = 'demo-password'
 const DEMO_ACCOUNTS = [
-  { login: 'organizer', name: 'Организатор', role: 'создаёт конкурсы, видит ход и итоги' },
+  { login: 'organizer', name: 'Организатор', role: 'организатор' },
   { login: 'anna', name: 'Анна Смирнова', role: 'участник' },
   { login: 'boris', name: 'Борис Котов', role: 'участник' },
   { login: 'vera', name: 'Вера Орлова', role: 'участник' },
@@ -146,7 +146,7 @@ function useDemo(account) {
 <style scoped>
 .login-page {
   display: grid;
-  grid-template-columns: 1.05fr 1fr;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
   gap: 40px;
   align-items: center;
   max-width: 1080px;
@@ -304,7 +304,7 @@ function useDemo(account) {
 
 @media (max-width: 860px) {
   .login-page {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 24px;
     min-height: auto;
     padding: 28px 16px 48px;
@@ -317,7 +317,7 @@ function useDemo(account) {
 
 @media (max-width: 480px) {
   .accounts {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>

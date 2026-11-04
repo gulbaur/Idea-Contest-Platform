@@ -134,8 +134,11 @@ const visible = computed(() => {
 }
 
 .filters {
+  /* Одна строка: на узком экране фильтры прокручиваются вбок, а не переносятся. */
   display: inline-flex;
-  flex-wrap: wrap;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
   gap: 4px;
   margin-bottom: 18px;
   padding: 4px;
@@ -146,7 +149,9 @@ const visible = computed(() => {
 
 .filter {
   display: inline-flex;
+  flex: none;
   align-items: center;
+  white-space: nowrap;
   gap: 7px;
   padding: 7px 12px;
   border: 0;
@@ -183,7 +188,7 @@ const visible = computed(() => {
 
 @media (max-width: 400px) {
   .grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>

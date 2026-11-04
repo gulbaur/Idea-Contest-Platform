@@ -54,8 +54,9 @@ class IdeaOut(BaseModel):
     title: str
     description: str
     submitted_at: datetime
-    updated_at: datetime
-    version: int
+    # Только у своих идей; у чужих — null (D-058).
+    updated_at: datetime | None
+    version: int | None
     # true только для идей текущего пользователя; не раскрывает авторов чужих идей.
     is_mine: bool
     # Автор раскрывается только после финала (D-005, F6); до этого — null.
