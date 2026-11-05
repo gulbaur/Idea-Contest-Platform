@@ -50,7 +50,7 @@ describe('настройки вида', () => {
     await flushPromises()
     expect(root.dataset.font).toBe('golos')
     expect(session.user.preferences).toMatchObject({ theme: 'dark', font: 'golos' })
-    expect(JSON.parse(localStorage.getItem('idea-contest.preferences'))).toEqual({ theme: 'dark', font: 'golos' })
+    expect(JSON.parse(localStorage.getItem('idea-contest.preferences'))).toEqual({ theme: 'dark', font: 'golos', locale: 'ru' })
     expect(wrapper.text()).toContain('Сохранено')
   })
 
@@ -74,7 +74,7 @@ describe('настройки вида', () => {
   })
 
   it('неизвестные значения из старого кеша заменяются значениями по умолчанию', () => {
-    expect(normalize({ theme: 'pink', font: 'comic' })).toEqual({ theme: 'system', font: 'inter' })
-    expect(normalize(undefined)).toEqual({ theme: 'system', font: 'inter' })
+    expect(normalize({ theme: 'pink', font: 'comic', locale: 'de' })).toEqual({ theme: 'system', font: 'inter', locale: 'ru' })
+    expect(normalize(undefined)).toEqual({ theme: 'system', font: 'inter', locale: 'ru' })
   })
 })

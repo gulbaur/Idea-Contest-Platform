@@ -1,37 +1,31 @@
 // Форматирование для интерфейса: даты в часовом поясе браузера, обратный отсчёт, падежи.
+import { locale, t } from './i18n.js'
 
-const dateTime = new Intl.DateTimeFormat('ru-RU', {
-  day: 'numeric',
-  month: 'long',
-  hour: '2-digit',
-  minute: '2-digit',
-})
-const dateTimeWithYear = new Intl.DateTimeFormat('ru-RU', {
-  day: 'numeric',
-  month: 'long',
-  year: 'numeric',
-  hour: '2-digit',
-  minute: '2-digit',
-})
+// Даты — на языке интерфейса (D-065). Форматировщики создаются один раз на язык.
+const formatters = new Map()
+
+function formatter(kind) {
+  const tag = locale.value === 'en' ? 'en-GB' : 'ru-RU'
+  const key = `${tag}:${kind}`
+  if (!formatters.has(key)) {
+    const options = { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }
+    if (kind === 'year') options.year = 'numeric'
+    if (kind === 'precise') options.second = '2-digit'
+    formatters.set(key, new Intl.DateTimeFormat(tag, options))
+  }
+  return formatters.get(key)
+}
 
 /** «5 ноября, 14:30»; год — только если он не текущий. */
 export function formatDateTime(iso, nowMs = Date.now()) {
   const date = new Date(iso)
   const sameYear = date.getFullYear() === new Date(nowMs).getFullYear()
-  return (sameYear ? dateTime : dateTimeWithYear).format(date)
+  return formatter(sameYear ? 'date' : 'year').format(date)
 }
-
-const precise = new Intl.DateTimeFormat('ru-RU', {
-  day: 'numeric',
-  month: 'long',
-  hour: '2-digit',
-  minute: '2-digit',
-  second: '2-digit',
-})
 
 /** С секундами — для ничьей: идеи часто поданы в одну и ту же минуту. */
 export function formatPrecise(iso) {
-  return precise.format(new Date(iso))
+  return formatter('precise').format(new Date(iso))
 }
 
 /** Часовой пояс браузера для подсказки: «UTC+5». */
@@ -61,8 +55,8 @@ export function formatCountdown(ms) {
   const hours = Math.floor((total % 86400) / 3600)
   const minutes = Math.floor((total % 3600) / 60)
   const seconds = total % 60
-  if (days > 0) return `${days} д ${hours} ч`
-  if (hours > 0) return `${hours} ч ${String(minutes).padStart(2, '0')} мин`
+  if (days > 0) return t('common.countdown.days', { d: days, h: hours })
+  if (hours > 0) return t('common.countdown.hours', { h: hours, m: String(minutes).padStart(2, '0') })
   return `${minutes}:${String(seconds).padStart(2, '0')}`
 }
 
@@ -83,10 +77,27 @@ export function localInputToIso(value) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString()
 }
 
+// Подписи — свойства-«геттеры»: читаются на текущем языке при каждом обращении (D-065).
 export const PHASE_LABELS = {
-  submission: 'Приём идей',
-  voting: 'Голосование',
-  finished: 'Завершён',
+  get submission() {
+    return t('common.phase.submission')
+  },
+  get voting() {
+    return t('common.phase.voting')
+  },
+  get finished() {
+    return t('common.phase.finished')
+  },
 }
 
-export const ROLE_LABELS = { admin: 'Администратор', organizer: 'Организатор', employee: 'Сотрудник' }
+export const ROLE_LABELS = {
+  get admin() {
+    return t('common.role.admin')
+  },
+  get organizer() {
+    return t('common.role.organizer')
+  },
+  get employee() {
+    return t('common.role.employee')
+  },
+}

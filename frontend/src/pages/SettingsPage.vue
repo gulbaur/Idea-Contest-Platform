@@ -1,26 +1,33 @@
 <script setup>
-// Настройки (D-060): тема и шрифт применяются сразу и сохраняются у пользователя на сервере —
+// Настройки (D-060, D-065): тема, язык и шрифт применяются сразу и сохраняются у пользователя на сервере —
 // они одинаковы во всех его вкладках и на любом устройстве. Ошибка сохранения возвращает прежнее.
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 
 import Icon from '../components/Icon.vue'
 import { api } from '../lib/api.js'
 import { ROLE_LABELS } from '../lib/format.js'
+import { t } from '../lib/i18n.js'
 import { notify } from '../lib/notify.js'
 import { applyPreferences, preferences } from '../lib/preferences.js'
 import { session, updateUser } from '../lib/session.js'
 
-const THEME_OPTIONS = [
-  { value: 'system', label: 'Как в системе', hint: 'Светлая или тёмная — как настроено на устройстве', icon: 'monitor' },
-  { value: 'light', label: 'Светлая', hint: 'Всегда светлая', icon: 'sun' },
-  { value: 'dark', label: 'Тёмная', hint: 'Всегда тёмная', icon: 'moon' },
+// Подписи — computed: пересчитываются при смене языка (D-065).
+const THEME_OPTIONS = computed(() => [
+  { value: 'system', label: t('settings.theme.system'), hint: t('settings.theme.systemHint'), icon: 'monitor' },
+  { value: 'light', label: t('settings.theme.light'), hint: t('settings.theme.lightHint'), icon: 'sun' },
+  { value: 'dark', label: t('settings.theme.dark'), hint: t('settings.theme.darkHint'), icon: 'moon' },
+])
+// Название языка — на нём самом: так его найдёт и тот, кто не читает текущий язык.
+const LOCALE_OPTIONS = [
+  { value: 'ru', label: 'Русский', sample: 'Конкурс идей' },
+  { value: 'en', label: 'English', sample: 'Idea contest' },
 ]
-const FONT_OPTIONS = [
-  { value: 'inter', label: 'Inter', hint: 'Нейтральный и современный', family: 'var(--font-inter)' },
-  { value: 'plex', label: 'IBM Plex Sans', hint: 'Строгий, корпоративный', family: 'var(--font-plex)' },
-  { value: 'golos', label: 'Golos Text', hint: 'Создан для русскоязычных интерфейсов', family: 'var(--font-golos)' },
-  { value: 'system', label: 'Системный', hint: 'Шрифт вашей операционной системы', family: 'var(--font-system)' },
-]
+const FONT_OPTIONS = computed(() => [
+  { value: 'inter', label: 'Inter', hint: t('settings.font.interHint'), family: 'var(--font-inter)' },
+  { value: 'plex', label: 'IBM Plex Sans', hint: t('settings.font.plexHint'), family: 'var(--font-plex)' },
+  { value: 'golos', label: 'Golos Text', hint: t('settings.font.golosHint'), family: 'var(--font-golos)' },
+  { value: 'system', label: t('settings.font.system'), hint: t('settings.font.systemHint'), family: 'var(--font-system)' },
+])
 
 const saving = ref(false)
 const saved = ref(false)
@@ -35,18 +42,18 @@ async function changePassword() {
   if (changingPassword.value) return
   passwordError.value = ''
   if (!passwords.current || !passwords.next) {
-    passwordError.value = 'Введите текущий и новый пароль'
+    passwordError.value = t('settings.password.empty')
     return
   }
   if (passwords.next !== passwords.repeat) {
-    passwordError.value = 'Новые пароли не совпадают'
+    passwordError.value = t('settings.password.mismatch')
     return
   }
   changingPassword.value = true
   try {
     await api.changePassword(passwords.current, passwords.next)
     Object.assign(passwords, { current: '', next: '', repeat: '' })
-    notify.success('Пароль изменён. Другие вкладки и устройства вышли из системы.')
+    notify.success(t('settings.password.changed'))
   } catch (failure) {
     passwordError.value = failure.message
   } finally {
@@ -67,7 +74,7 @@ async function choose(field, value) {
     savedTimer = setTimeout(() => (saved.value = false), 2500)
   } catch (failure) {
     applyPreferences(previous)
-    notify.error(`Настройка не сохранена: ${failure.message}`)
+    notify.error(t('settings.notSaved', { error: failure.message }))
   } finally {
     saving.value = false
   }
@@ -78,22 +85,22 @@ async function choose(field, value) {
   <div class="container page settings">
     <header class="page-header">
       <div>
-        <h1>Настройки</h1>
-        <p class="subtitle">Оформление сохраняется в вашей учётной записи и действует в любой вкладке и на любом устройстве.</p>
+        <h1>{{ t('settings.title') }}</h1>
+        <p class="subtitle">{{ t('settings.subtitle') }}</p>
       </div>
       <span class="status faint" role="status" aria-live="polite">
-        <template v-if="saving"><span class="spinner" aria-hidden="true" /> Сохранение…</template>
-        <template v-else-if="saved"><Icon name="check" :size="16" /> Сохранено</template>
+        <template v-if="saving"><span class="spinner" aria-hidden="true" /> {{ t('settings.saving') }}</template>
+        <template v-else-if="saved"><Icon name="check" :size="16" /> {{ t('settings.saved') }}</template>
       </span>
     </header>
 
     <section class="card section">
       <div class="section-head">
-        <h2>Тема</h2>
-        <p class="muted">Цветовая схема интерфейса.</p>
+        <h2>{{ t('settings.theme.title') }}</h2>
+        <p class="muted">{{ t('settings.theme.text') }}</p>
       </div>
       <fieldset class="options themes">
-        <legend class="sr-only">Тема</legend>
+        <legend class="sr-only">{{ t('settings.theme.title') }}</legend>
         <label
           v-for="option in THEME_OPTIONS"
           :key="option.value"
@@ -121,11 +128,41 @@ async function choose(field, value) {
 
     <section class="card section">
       <div class="section-head">
-        <h2>Шрифт</h2>
-        <p class="muted">Все варианты поддерживают кириллицу и загружаются с этого же сервера.</p>
+        <h2>{{ t('settings.language.title') }}</h2>
+        <p class="muted">{{ t('settings.language.text') }}</p>
+      </div>
+      <fieldset class="options languages">
+        <legend class="sr-only">{{ t('settings.language.title') }}</legend>
+        <label
+          v-for="option in LOCALE_OPTIONS"
+          :key="option.value"
+          class="option"
+          :class="{ selected: preferences.locale === option.value }"
+          :lang="option.value"
+        >
+          <input
+            type="radio"
+            name="locale"
+            class="sr-only"
+            :value="option.value"
+            :checked="preferences.locale === option.value"
+            @change="choose('locale', option.value)"
+          />
+          <span class="option-text">
+            <span class="option-title">{{ option.label }}</span>
+            <span class="faint">{{ option.sample }}</span>
+          </span>
+        </label>
+      </fieldset>
+    </section>
+
+    <section class="card section">
+      <div class="section-head">
+        <h2>{{ t('settings.font.title') }}</h2>
+        <p class="muted">{{ t('settings.font.text') }}</p>
       </div>
       <fieldset class="options fonts">
-        <legend class="sr-only">Шрифт</legend>
+        <legend class="sr-only">{{ t('settings.font.title') }}</legend>
         <label
           v-for="option in FONT_OPTIONS"
           :key="option.value"
@@ -151,27 +188,27 @@ async function choose(field, value) {
 
     <section class="card section">
       <div class="section-head">
-        <h2>Пароль</h2>
-        <p class="muted">После смены пароля другие вкладки и устройства выйдут из системы, эта останется.</p>
+        <h2>{{ t('settings.password.title') }}</h2>
+        <p class="muted">{{ t('settings.password.text') }}</p>
       </div>
       <form class="stack password-form" novalidate @submit.prevent="changePassword">
         <div class="field">
-          <label for="current-password">Текущий пароль</label>
+          <label for="current-password">{{ t('settings.password.current') }}</label>
           <input id="current-password" v-model="passwords.current" class="input" type="password" autocomplete="current-password" />
         </div>
         <div class="field">
-          <label for="next-password">Новый пароль</label>
+          <label for="next-password">{{ t('settings.password.next') }}</label>
           <input id="next-password" v-model="passwords.next" class="input" type="password" autocomplete="new-password" />
-          <span class="hint">Не короче 10 символов и не совпадает с логином.</span>
+          <span class="hint">{{ t('settings.password.nextHint') }}</span>
         </div>
         <div class="field">
-          <label for="repeat-password">Новый пароль ещё раз</label>
+          <label for="repeat-password">{{ t('settings.password.repeat') }}</label>
           <input id="repeat-password" v-model="passwords.repeat" class="input" type="password" autocomplete="new-password" />
         </div>
         <div v-if="passwordError" class="notice notice-danger" role="alert"><Icon name="alert" class="icon" /> {{ passwordError }}</div>
         <div>
           <button class="btn btn-primary" type="submit" :disabled="changingPassword">
-            <span v-if="changingPassword" class="spinner" aria-hidden="true" /> Сменить пароль
+            <span v-if="changingPassword" class="spinner" aria-hidden="true" /> {{ t('settings.password.submit') }}
           </button>
         </div>
       </form>
@@ -179,20 +216,20 @@ async function choose(field, value) {
 
     <section class="card section">
       <div class="section-head">
-        <h2>Профиль</h2>
-        <p class="muted">Имя, логин и роль задаёт администратор сервиса.</p>
+        <h2>{{ t('settings.profile.title') }}</h2>
+        <p class="muted">{{ t('settings.profile.text') }}</p>
       </div>
       <dl class="profile">
         <div>
-          <dt>Имя</dt>
+          <dt>{{ t('settings.profile.name') }}</dt>
           <dd>{{ session.user?.display_name }}</dd>
         </div>
         <div>
-          <dt>Логин</dt>
+          <dt>{{ t('settings.profile.login') }}</dt>
           <dd class="mono">{{ session.user?.login }}</dd>
         </div>
         <div>
-          <dt>Роль</dt>
+          <dt>{{ t('settings.profile.role') }}</dt>
           <dd>{{ ROLE_LABELS[session.user?.role] }}</dd>
         </div>
       </dl>
@@ -237,7 +274,8 @@ async function choose(field, value) {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.fonts {
+.fonts,
+.languages {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
@@ -367,7 +405,8 @@ dd {
 
 @media (max-width: 520px) {
   .themes,
-  .fonts {
+  .fonts,
+  .languages {
     grid-template-columns: minmax(0, 1fr);
   }
 

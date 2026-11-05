@@ -18,4 +18,5 @@
   var root = document.documentElement
   root.setAttribute('data-theme', theme)
   root.setAttribute('data-font', typeof prefs.font === 'string' ? prefs.font : 'inter')
+  root.setAttribute('lang', prefs.locale === 'en' ? 'en' : 'ru')
 })()

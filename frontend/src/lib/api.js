@@ -1,5 +1,6 @@
 // Запросы к backend (D-049). Все адреса — относительные (/api/...): nginx передаёт их
 // backend, поэтому браузер работает с одним адресом и CORS не нужен (D-048).
+import { locale } from './i18n.js'
 import { session } from './session.js'
 
 export class ApiError extends Error {
@@ -67,7 +68,8 @@ export function messageFor(status, data) {
 }
 
 export async function request(method, path, { body, query } = {}) {
-  const headers = { Accept: 'application/json' }
+  // Сообщения об ошибках — на языке интерфейса (D-065).
+  const headers = { Accept: 'application/json', 'Accept-Language': locale.value }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (session.token) headers.Authorization = `Bearer ${session.token}`
 
