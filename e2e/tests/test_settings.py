@@ -17,14 +17,17 @@ def test_theme_follows_the_user_not_the_browser(people, api):
     settings.get_by_text("Тёмная", exact=True).click()
     expect(settings.get_by_role("status").filter(has_text="Сохранено")).to_be_visible()
     assert theme(settings) == "dark"
-    settings.get_by_text("IBM Plex Sans", exact=True).click()
+    settings.locator("#font-select").select_option("plex")
     expect(settings.locator("html")).to_have_attribute("data-font", "plex")
+    settings.get_by_role("radio", name="Большой").click()
+    expect(settings.locator("html")).to_have_attribute("data-size", "large")
 
     try:
         # Сохранено на сервере: новая вкладка (новый вход) той же сотрудницы — тоже тёмная.
         assert api("vera").get("/api/auth/me").json()["preferences"]["theme"] == "dark"
         second = vera.tab()
         assert theme(second) == "dark"
+        expect(second.locator("html")).to_have_attribute("data-size", "large")
 
         # Тот же браузер, соседняя вкладка, другой пользователь — его собственная (светлая) тема.
         other = vera.context.new_page()
@@ -38,5 +41,5 @@ def test_theme_follows_the_user_not_the_browser(people, api):
         api("vera").request.patch(
             "/api/auth/me/preferences",
             headers={"Authorization": f"Bearer {api('vera').token}"},
-            data={"theme": "system", "font": "inter"},
+            data={"theme": "system", "font": "inter", "text_size": "medium"},
         )

@@ -7,7 +7,8 @@ import { LOCALES, setLocale } from './i18n.js'
 
 export const THEMES = ['system', 'light', 'dark']
 export const FONTS = ['inter', 'plex', 'golos', 'system']
-export const DEFAULTS = Object.freeze({ theme: 'system', font: 'inter', locale: 'ru' })
+export const TEXT_SIZES = ['small', 'medium', 'large']
+export const DEFAULTS = Object.freeze({ theme: 'system', font: 'inter', locale: 'ru', text_size: 'medium' })
 
 const KEY = 'idea-contest.preferences'
 
@@ -33,6 +34,7 @@ export function normalize(value = {}) {
     theme: THEMES.includes(value.theme) ? value.theme : DEFAULTS.theme,
     font: FONTS.includes(value.font) ? value.font : DEFAULTS.font,
     locale: LOCALES.includes(value.locale) ? value.locale : DEFAULTS.locale,
+    text_size: TEXT_SIZES.includes(value.text_size) ? value.text_size : DEFAULTS.text_size,
   }
 }
 
@@ -50,6 +52,7 @@ function paint() {
   const root = document.documentElement
   root.dataset.theme = resolvedTheme()
   root.dataset.font = preferences.font
+  root.dataset.size = preferences.text_size // размер текста всего интерфейса (D-066)
   setLocale(preferences.locale)
 }
 

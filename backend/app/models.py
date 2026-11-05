@@ -46,6 +46,7 @@ class Role(StrEnum):
 THEMES = ("system", "light", "dark")
 FONTS = ("inter", "plex", "golos", "system")
 LOCALES = ("ru", "en")
+TEXT_SIZES = ("small", "medium", "large")
 
 
 def _one_of(column: str, values: tuple[str, ...]) -> str:
@@ -59,6 +60,7 @@ class User(Base):
         CheckConstraint(_one_of("theme", THEMES), name="theme_valid"),
         CheckConstraint(_one_of("font", FONTS), name="font_valid"),
         CheckConstraint(_one_of("locale", LOCALES), name="locale_valid"),
+        CheckConstraint(_one_of("text_size", TEXT_SIZES), name="text_size_valid"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -79,6 +81,7 @@ class User(Base):
     theme: Mapped[str] = mapped_column(String(16), server_default="system")
     font: Mapped[str] = mapped_column(String(16), server_default="inter")
     locale: Mapped[str] = mapped_column(String(8), server_default="ru")
+    text_size: Mapped[str] = mapped_column(String(8), server_default="medium")  # D-066
 
 
 class UserSession(Base):

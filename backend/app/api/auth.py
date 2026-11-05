@@ -10,7 +10,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.deps import ClockDep, CurrentUserDep, DbSession, HubDep
-from app.models import FONTS, LOCALES, THEMES, AuditEvent, LoginThrottle, User, UserSession
+from app.models import FONTS, LOCALES, TEXT_SIZES, THEMES, AuditEvent, LoginThrottle, User, UserSession
 from app.passwords import MAX_LENGTH, password_problem
 from app.schemas import StorableText
 from app.seed import DEMO_USERS
@@ -37,6 +37,7 @@ class PreferencesOut(BaseModel):
     theme: str
     font: str
     locale: str
+    text_size: str
 
 
 class PreferencesIn(BaseModel):
@@ -47,6 +48,7 @@ class PreferencesIn(BaseModel):
     theme: Literal[THEMES] | None = None
     font: Literal[FONTS] | None = None
     locale: Literal[LOCALES] | None = None
+    text_size: Literal[TEXT_SIZES] | None = None
 
 
 class UserOut(BaseModel):

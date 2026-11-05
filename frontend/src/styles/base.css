@@ -123,6 +123,16 @@
   --focus: 0 0 0 3px rgba(124, 172, 255, 0.35);
 }
 
+/* Размер текста (D-066): все размеры текста и большинство отступов заданы в rem,
+   поэтому базовый размер страницы масштабирует интерфейс целиком. */
+:root[data-size='small'] {
+  font-size: 14.5px;
+}
+
+:root[data-size='large'] {
+  font-size: 17.5px;
+}
+
 :root[data-font='plex'] {
   --font: var(--font-plex);
 }
