@@ -111,6 +111,7 @@ export const api = {
   logout: () => request('POST', '/auth/logout'),
   me: () => request('GET', '/auth/me'),
   demo: () => request('GET', '/auth/demo'),
+  updatePreferences: (changes) => request('PATCH', '/auth/me/preferences', { body: changes }),
 
   employees: () => request('GET', '/users'),
   contests: () => request('GET', '/contests'),

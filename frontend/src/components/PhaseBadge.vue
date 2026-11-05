@@ -18,8 +18,8 @@ defineProps({ phase: { type: String, required: true } })
   gap: 7px;
   padding: 4px 11px;
   border-radius: 999px;
-  font-size: 0.8rem;
-  font-weight: 700;
+  font-size: var(--text-sm);
+  font-weight: 500;
   white-space: nowrap;
 }
 

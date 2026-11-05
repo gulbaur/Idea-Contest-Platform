@@ -310,7 +310,7 @@ async function submit() {
   margin-bottom: 14px;
   color: var(--text-2);
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: var(--text-md);
 }
 
 .presets {

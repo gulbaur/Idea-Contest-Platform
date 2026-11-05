@@ -36,7 +36,7 @@ const view = computed(() => {
   border-radius: 999px;
   background: var(--surface-2);
   color: var(--text-2);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   font-weight: 600;
 }
 

@@ -58,7 +58,7 @@ onMounted(load)
   padding: 4px 10px;
   border-radius: 999px;
   background: var(--surface-2);
-  font-size: 0.86rem;
+  font-size: var(--text-sm);
 }
 
 .hint {

@@ -93,8 +93,8 @@ const nextStep = computed(() => {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 0.85rem;
-  font-weight: 650;
+  font-size: var(--text-sm);
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -104,7 +104,7 @@ const nextStep = computed(() => {
 }
 
 .topic {
-  font-size: 1.08rem;
+  font-size: var(--text-lg);
   overflow-wrap: anywhere;
 }
 
@@ -117,12 +117,12 @@ const nextStep = computed(() => {
 
 dt {
   color: var(--text-3);
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
 }
 
 dd {
   margin: 0;
-  font-size: 0.88rem;
+  font-size: var(--text-md);
   font-weight: 600;
 }
 

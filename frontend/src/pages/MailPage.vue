@@ -249,7 +249,7 @@ const selected = computed(() => visible.value.find((letter) => letter.id === sel
   color: var(--text-2);
   font: inherit;
   font-weight: 600;
-  font-size: 0.86rem;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 
@@ -330,7 +330,7 @@ const selected = computed(() => visible.value.find((letter) => letter.id === sel
 .subject {
   display: -webkit-box;
   overflow: hidden;
-  font-weight: 650;
+  font-weight: 600;
   overflow-wrap: anywhere;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -339,19 +339,19 @@ const selected = computed(() => visible.value.find((letter) => letter.id === sel
 .meta {
   overflow: hidden;
   color: var(--text-2);
-  font-size: 0.84rem;
+  font-size: var(--text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .time {
   flex: none;
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
 }
 
 .letter {
   position: sticky;
-  top: calc(var(--header-h) + 16px);
+  top: var(--sticky-top);
 }
 
 .letter .close {
@@ -375,7 +375,7 @@ const selected = computed(() => visible.value.find((letter) => letter.id === sel
 .headers div {
   display: flex;
   gap: 10px;
-  font-size: 0.9rem;
+  font-size: var(--text-md);
 }
 
 .headers dt {
@@ -392,7 +392,7 @@ const selected = computed(() => visible.value.find((letter) => letter.id === sel
 .body {
   margin: 0;
   font-family: var(--font);
-  font-size: 0.95rem;
+  font-size: var(--text-lg);
   line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;

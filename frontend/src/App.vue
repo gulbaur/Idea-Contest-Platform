@@ -1,10 +1,10 @@
 <script setup>
-// Корневой компонент: шапка (после входа), текущая страница, уведомления, диалог.
+// Корневой компонент: боковое меню (после входа), текущая страница, уведомления, диалог.
 // Здесь же — жизненный цикл соединения WebSocket и реакция на окончание сессии.
 import { onMounted, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 
-import AppHeader from './components/AppHeader.vue'
+import AppSidebar from './components/AppSidebar.vue'
 import ConfirmHost from './components/ConfirmHost.vue'
 import ToastHost from './components/ToastHost.vue'
 import { api, onUnauthorized } from './lib/api.js'
@@ -58,8 +58,39 @@ onMounted(async () => {
 </script>
 
 <template>
-  <AppHeader v-if="session.token" @logout="logout" />
-  <RouterView />
+  <div v-if="session.token" class="shell">
+    <AppSidebar @logout="logout" />
+    <main class="main">
+      <RouterView />
+    </main>
+  </div>
+  <RouterView v-else />
   <ToastHost />
   <ConfirmHost />
 </template>
+
+<style scoped>
+.shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  min-height: 100vh;
+  /* Колонка меню — белая с границей на всю высоту, даже когда страница длиннее экрана. */
+  background: linear-gradient(
+    90deg,
+    var(--surface) calc(var(--sidebar-w) - 1px),
+    var(--border) calc(var(--sidebar-w) - 1px) var(--sidebar-w),
+    transparent var(--sidebar-w)
+  );
+}
+
+.main {
+  min-width: 0;
+}
+
+@media (max-width: 1023px) {
+  .shell {
+    display: block;
+    background: none;
+  }
+}
+</style>

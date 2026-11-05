@@ -114,8 +114,7 @@ const votesLabel = (n) => `${n} ${plural(n, ['голос', 'голоса', 'го
 
 .item.winner {
   border-color: var(--gold);
-  background: linear-gradient(120deg, var(--gold-soft), var(--surface) 60%);
-  box-shadow: 0 0 0 3px var(--gold-soft);
+  background: var(--gold-soft);
 }
 
 .item.leader {
@@ -130,12 +129,12 @@ const votesLabel = (n) => `${n} ${plural(n, ['голос', 'голоса', 'го
   border-radius: 50%;
   background: var(--surface-2);
   color: var(--text-2);
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .winner .place {
   background: var(--gold);
-  color: #fff;
+  color: #1f1500;
 }
 
 .head {
@@ -152,7 +151,7 @@ const votesLabel = (n) => `${n} ${plural(n, ['голос', 'голоса', 'го
 .description {
   margin-top: 4px;
   color: var(--text-2);
-  font-size: 0.92rem;
+  font-size: var(--text-md);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   display: -webkit-box;
@@ -173,7 +172,7 @@ const votesLabel = (n) => `${n} ${plural(n, ['голос', 'голоса', 'го
   align-items: center;
   gap: 5px;
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: var(--text-md);
 }
 
 .meta .faint {
@@ -187,8 +186,8 @@ const votesLabel = (n) => `${n} ${plural(n, ['голос', 'голоса', 'го
 }
 
 .votes {
-  font-size: 1.6rem;
-  font-weight: 750;
+  font-size: var(--text-2xl);
+  font-weight: 600;
   line-height: 1;
   font-variant-numeric: tabular-nums;
 }

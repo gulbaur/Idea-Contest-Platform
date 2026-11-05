@@ -2,14 +2,14 @@
 
 import asyncio
 from datetime import datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import delete, select
 
 from app.deps import ClockDep, CurrentUserDep, DbSession, HubDep
-from app.models import User, UserSession
+from app.models import FONTS, LOCALES, THEMES, User, UserSession
 from app.schemas import StorableText
 from app.seed import DEMO_USERS
 from app.security import (
@@ -28,6 +28,24 @@ class LoginIn(BaseModel):
     password: str = Field(min_length=1, max_length=256)
 
 
+class PreferencesOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    theme: str
+    font: str
+    locale: str
+
+
+class PreferencesIn(BaseModel):
+    """Меняются только переданные поля (D-060). Неизвестное значение — 422."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    theme: Literal[THEMES] | None = None
+    font: Literal[FONTS] | None = None
+    locale: Literal[LOCALES] | None = None
+
+
 class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -35,6 +53,17 @@ class UserOut(BaseModel):
     login: str
     display_name: str
     role: str
+    preferences: PreferencesOut
+
+    @classmethod
+    def of(cls, user: User) -> "UserOut":
+        return cls(
+            id=user.id,
+            login=user.login,
+            display_name=user.display_name,
+            role=user.role,
+            preferences=PreferencesOut.model_validate(user),
+        )
 
 
 class LoginOut(BaseModel):
@@ -92,7 +121,7 @@ async def login(payload: LoginIn, request: Request, db: DbSession, clock: ClockD
         )
     )
     await db.commit()
-    return LoginOut(token=token, expires_at=expires_at, user=UserOut.model_validate(user))
+    return LoginOut(token=token, expires_at=expires_at, user=UserOut.of(user))
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -124,4 +153,15 @@ async def demo(request: Request, db: DbSession) -> DemoOut:
 
 @router.get("/me", response_model=UserOut)
 async def me(current: CurrentUserDep) -> UserOut:
-    return UserOut.model_validate(current.user)
+    return UserOut.of(current.user)
+
+
+@router.patch("/me/preferences", response_model=UserOut)
+async def update_preferences(payload: PreferencesIn, current: CurrentUserDep, db: DbSession) -> UserOut:
+    """Тема, шрифт и язык текущего пользователя — для всех его вкладок и устройств (D-060)."""
+    changes = payload.model_dump(exclude_none=True)
+    user = await db.get(User, current.user.id, with_for_update=True)
+    for field, value in changes.items():
+        setattr(user, field, value)
+    await db.commit()
+    return UserOut.of(user)

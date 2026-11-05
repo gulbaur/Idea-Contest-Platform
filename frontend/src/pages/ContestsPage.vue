@@ -160,7 +160,7 @@ const visible = computed(() => {
   color: var(--text-2);
   font: inherit;
   font-weight: 600;
-  font-size: 0.88rem;
+  font-size: var(--text-md);
   cursor: pointer;
 }
 
@@ -178,7 +178,7 @@ const visible = computed(() => {
   padding: 0 6px;
   border-radius: 999px;
   background: var(--surface-2);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   text-align: center;
 }
 

@@ -72,27 +72,27 @@ const share = computed(() =>
   flex: none;
   width: 42px;
   height: 42px;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--primary-soft);
   color: var(--primary-text);
 }
 
 .value {
-  font-size: 1.6rem;
-  font-weight: 750;
+  font-size: var(--text-2xl);
+  font-weight: 600;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
 }
 
 .of {
   color: var(--text-3);
-  font-size: 1rem;
+  font-size: var(--text-lg);
   font-weight: 600;
 }
 
 .label {
   color: var(--text-2);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .grow {
@@ -111,7 +111,7 @@ const share = computed(() =>
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--primary), var(--phase-voting));
+  background: var(--primary);
   transition: width 0.4s ease;
 }
 

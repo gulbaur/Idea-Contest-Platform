@@ -9,6 +9,7 @@ import ContestsPage from './pages/ContestsPage.vue'
 import LoginPage from './pages/LoginPage.vue'
 import MailPage from './pages/MailPage.vue'
 import NotFoundPage from './pages/NotFoundPage.vue'
+import SettingsPage from './pages/SettingsPage.vue'
 
 export const routes = [
   { path: '/login', name: 'login', component: LoginPage, meta: { public: true, title: 'Вход' } },
@@ -22,6 +23,7 @@ export const routes = [
   },
   { path: '/contests/:id(\\d+)', name: 'contest', component: ContestPage, props: true, meta: { title: 'Конкурс' } },
   { path: '/mail', name: 'mail', component: MailPage, meta: { title: 'Почта' } },
+  { path: '/settings', name: 'settings', component: SettingsPage, meta: { title: 'Настройки' } },
   { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundPage, meta: { title: 'Не найдено' } },
 ]
 

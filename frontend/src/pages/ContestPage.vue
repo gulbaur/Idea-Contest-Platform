@@ -424,7 +424,7 @@ async function castVote(idea, revoke = false) {
   margin-bottom: 16px;
   color: var(--text-2);
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: var(--text-md);
 }
 
 .contest-header {
@@ -455,7 +455,7 @@ async function castVote(idea, revoke = false) {
 
 .aside {
   position: sticky;
-  top: calc(var(--header-h) + 16px);
+  top: var(--sticky-top);
 }
 
 .count {
@@ -481,8 +481,8 @@ async function castVote(idea, revoke = false) {
   gap: 6px;
   margin-left: auto;
   color: var(--phase-voting);
-  font-size: 0.82rem;
-  font-weight: 650;
+  font-size: var(--text-sm);
+  font-weight: 600;
 }
 
 .pulse {
@@ -518,7 +518,7 @@ async function castVote(idea, revoke = false) {
   gap: 16px;
   padding: 18px 20px;
   border-radius: var(--radius-lg);
-  background: linear-gradient(120deg, var(--gold-soft), var(--surface));
+  background: var(--gold-soft);
   border: 1px solid var(--gold);
   color: var(--warning);
 }
@@ -535,7 +535,7 @@ async function castVote(idea, revoke = false) {
   margin: 0;
   padding-left: 18px;
   color: var(--text-2);
-  font-size: 0.9rem;
+  font-size: var(--text-md);
 }
 
 .rule-list li + li {

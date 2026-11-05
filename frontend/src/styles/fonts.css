@@ -1,0 +1,15 @@
+/* Шрифты из самого проекта (D-060), без внешних запросов.
+   Файлы с полным набором символов: у каждого подмножества (латиница, кириллица…) свой
+   unicode-range, и браузер скачивает только нужные подмножества и только выбранного шрифта. */
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/ibm-plex-sans/700.css';
+@import '@fontsource/golos-text/400.css';
+@import '@fontsource/golos-text/500.css';
+@import '@fontsource/golos-text/600.css';
+@import '@fontsource/golos-text/700.css';

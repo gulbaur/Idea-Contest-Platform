@@ -42,7 +42,7 @@ const ICON = { success: 'check', error: 'alert', info: 'info' }
   border-radius: var(--radius);
   background: var(--surface);
   box-shadow: var(--shadow-lg);
-  font-size: 0.92rem;
+  font-size: var(--text-md);
 }
 
 .toast .icon {
@@ -76,7 +76,7 @@ const ICON = { success: 'check', error: 'alert', info: 'info' }
   width: 26px;
   height: 26px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-3);
   cursor: pointer;

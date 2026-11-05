@@ -2,6 +2,8 @@
 // поэтому в каждой вкладке браузера — свой вход, и вкладки не мешают друг другу.
 import { reactive } from 'vue'
 
+import { applyPreferences } from './preferences.js'
+
 const KEY = 'idea-contest.session'
 
 function read() {
@@ -23,21 +25,25 @@ function write(value) {
 }
 
 const saved = read()
+if (saved?.user?.preferences) applyPreferences(saved.user.preferences)
 
 export const session = reactive({
   token: saved?.token ?? null,
   user: saved?.user ?? null,
 })
 
+// Настройки вида — свои у каждого пользователя (D-060): применяются при входе и обновлении.
 export function setSession({ token, user }) {
   session.token = token
   session.user = user
   write({ token, user })
+  if (user?.preferences) applyPreferences(user.preferences)
 }
 
 export function updateUser(user) {
   session.user = user
   write({ token: session.token, user })
+  if (user?.preferences) applyPreferences(user.preferences)
 }
 
 export function clearSession() {

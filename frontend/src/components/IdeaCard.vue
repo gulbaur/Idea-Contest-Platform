@@ -118,7 +118,7 @@ const edited = computed(() => Boolean(props.idea.updated_at) && props.idea.updat
 }
 
 .title {
-  font-size: 1.05rem;
+  font-size: var(--text-lg);
   overflow-wrap: anywhere;
 }
 

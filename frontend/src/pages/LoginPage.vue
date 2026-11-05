@@ -128,13 +128,19 @@ function useDemo(account) {
         </div>
         <ul class="accounts">
           <li v-for="account in demo.accounts" :key="account.login">
-            <button class="account" type="button" :disabled="pending" @click="useDemo(account)">
+            <button
+              class="account"
+              type="button"
+              :title="`Войти как ${account.login}`"
+              :disabled="pending"
+              @click="useDemo(account)"
+            >
               <span class="avatar" :class="{ organizer: account.role === 'organizer' }">
                 <Icon :name="account.role === 'organizer' ? 'flag' : 'user'" :size="16" />
               </span>
               <span class="who">
                 <strong>{{ account.display_name }}</strong>
-                <small>{{ account.login }} · {{ ROLE_NAMES[account.role] ?? account.role }}</small>
+                <small>{{ ROLE_NAMES[account.role] ?? account.role }} · {{ account.login }}</small>
               </span>
               <Icon name="arrow-left" class="go" :size="16" />
             </button>
@@ -167,8 +173,8 @@ function useDemo(account) {
   display: inline-flex;
   align-items: center;
   gap: 12px;
-  font-weight: 750;
-  font-size: 1.15rem;
+  font-weight: 600;
+  font-size: var(--text-xl);
 }
 
 .logo {
@@ -176,9 +182,9 @@ function useDemo(account) {
   place-items: center;
   width: 46px;
   height: 46px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, var(--primary), var(--phase-voting));
-  color: #fff;
+  border-radius: var(--radius-lg);
+  background: var(--primary);
+  color: var(--on-primary);
 }
 
 .steps {
@@ -205,7 +211,7 @@ function useDemo(account) {
   border-radius: 50%;
   background: var(--primary-soft);
   color: var(--primary-text);
-  font-weight: 750;
+  font-weight: 600;
 }
 
 .steps strong {
@@ -225,7 +231,7 @@ function useDemo(account) {
 
 .hint {
   margin-top: 4px;
-  font-size: 0.9rem;
+  font-size: var(--text-md);
 }
 
 .demo .row {
@@ -287,13 +293,13 @@ function useDemo(account) {
 }
 
 .who strong {
-  font-size: 0.88rem;
+  font-size: var(--text-md);
 }
 
 .who small {
   overflow: hidden;
   color: var(--text-3);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

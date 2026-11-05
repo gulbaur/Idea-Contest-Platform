@@ -121,7 +121,7 @@ const STATUS = {
 .note {
   margin-top: 2px;
   color: var(--text-2);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .badge-danger {

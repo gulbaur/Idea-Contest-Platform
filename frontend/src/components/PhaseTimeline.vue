@@ -103,12 +103,12 @@ const steps = computed(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .when {
   color: var(--text-2);
-  font-size: 0.86rem;
+  font-size: var(--text-sm);
 }
 
 .left {
@@ -116,7 +116,7 @@ const steps = computed(() => {
   align-items: center;
   gap: 5px;
   margin-top: 4px;
-  font-size: 0.86rem;
+  font-size: var(--text-sm);
   font-variant-numeric: tabular-nums;
 }
 
@@ -124,8 +124,8 @@ const steps = computed(() => {
   padding: 1px 8px;
   border-radius: 999px;
   background: currentColor;
-  font-size: 0.7rem;
-  font-weight: 700;
+  font-size: var(--text-xs);
+  font-weight: 600;
 }
 
 .step.done {

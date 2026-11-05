@@ -39,10 +39,23 @@ class Role(StrEnum):
     EMPLOYEE = "employee"
 
 
+# Допустимые настройки вида (D-060); те же списки проверяет БД.
+THEMES = ("system", "light", "dark")
+FONTS = ("inter", "plex", "golos", "system")
+LOCALES = ("ru", "en")
+
+
+def _one_of(column: str, values: tuple[str, ...]) -> str:
+    return f"{column} IN ({', '.join(repr(v) for v in values)})"
+
+
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (
         CheckConstraint("role IN ('organizer', 'employee')", name="role_valid"),
+        CheckConstraint(_one_of("theme", THEMES), name="theme_valid"),
+        CheckConstraint(_one_of("font", FONTS), name="font_valid"),
+        CheckConstraint(_one_of("locale", LOCALES), name="locale_valid"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -52,6 +65,10 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(16))
     password_hash: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Настройки вида (D-060): хранятся у пользователя, а не в браузере.
+    theme: Mapped[str] = mapped_column(String(16), server_default="system")
+    font: Mapped[str] = mapped_column(String(16), server_default="inter")
+    locale: Mapped[str] = mapped_column(String(8), server_default="ru")
 
 
 class UserSession(Base):
