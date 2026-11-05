@@ -10,6 +10,7 @@ import { useServerNow } from '../composables/useServerNow.js'
 import { api } from '../lib/api.js'
 import { useSignals } from '../lib/connection.js'
 import { formatDateTime } from '../lib/format.js'
+import { notify } from '../lib/notify.js'
 import { isOrganizer } from '../lib/session.js'
 
 const KINDS = {
@@ -39,18 +40,47 @@ const contestFilter = computed({
   set: (value) => router.replace({ query: value ? { contest: value } : {} }),
 })
 
+// Письма приходят порциями от новых к старым (D-059); «Показать ещё» догружает следующую.
+const PAGE = 50
+const hasMore = ref(false)
+const loadingMore = ref(false)
+
 async function load() {
+  // Перечитываем столько писем, сколько уже показано: догруженные старые не пропадают.
+  const limit = Math.max(PAGE, letters.value?.length ?? 0)
   try {
     const [list, contestList] = await Promise.all([
-      api.emails({ contest_id: contestFilter.value || undefined }),
+      api.emails({ contest_id: contestFilter.value || undefined, limit }),
       contests.value.length ? Promise.resolve(contests.value) : api.contests(),
     ])
     letters.value = list
+    hasMore.value = list.length === limit
     contests.value = contestList
     error.value = null
     if (selectedId.value && !list.some((letter) => letter.id === selectedId.value)) selectedId.value = null
   } catch (failure) {
     if (!letters.value) error.value = failure
+  }
+}
+
+async function loadMore() {
+  const last = letters.value?.at(-1)
+  if (!last || loadingMore.value) return
+  loadingMore.value = true
+  try {
+    const page = await api.emails({
+      contest_id: contestFilter.value || undefined,
+      limit: PAGE,
+      before_time: last.created_at,
+      before_id: last.id,
+    })
+    const known = new Set(letters.value.map((letter) => letter.id))
+    letters.value = [...letters.value, ...page.filter((letter) => !known.has(letter.id))]
+    hasMore.value = page.length === PAGE
+  } catch (failure) {
+    notify.error(failure.message)
+  } finally {
+    loadingMore.value = false
   }
 }
 
@@ -60,6 +90,7 @@ useSignals((message) => {
 onMounted(load)
 watch(contestFilter, () => {
   selectedId.value = null
+  letters.value = null // новый фильтр — снова с первой порции
   load()
 })
 
@@ -145,6 +176,11 @@ const selected = computed(() => visible.value.find((letter) => letter.id === sel
             <span class="time faint">{{ formatDateTime(letter.created_at, now) }}</span>
           </button>
         </li>
+        <li v-if="hasMore" class="more">
+          <button class="btn btn-sm" type="button" :disabled="loadingMore" @click="loadMore">
+            <span v-if="loadingMore" class="spinner" aria-hidden="true" /> Показать ещё
+          </button>
+        </li>
       </ul>
 
       <article v-if="selected" class="letter card" aria-live="polite">
@@ -182,6 +218,12 @@ const selected = computed(() => visible.value.find((letter) => letter.id === sel
 </template>
 
 <style scoped>
+.more {
+  display: flex;
+  justify-content: center;
+  padding-top: 6px;
+}
+
 .filters {
   gap: 10px;
 }

@@ -110,6 +110,7 @@ export const api = {
   login: (login, password) => request('POST', '/auth/login', { body: { login, password } }),
   logout: () => request('POST', '/auth/logout'),
   me: () => request('GET', '/auth/me'),
+  demo: () => request('GET', '/auth/demo'),
 
   employees: () => request('GET', '/users'),
   contests: () => request('GET', '/contests'),

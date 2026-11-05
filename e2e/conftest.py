@@ -81,6 +81,12 @@ class Person:
         page = self.context.new_page()
         number = len(self.tabs) + 1
         page.on("pageerror", lambda error: self.errors.append(f"{self.login}, вкладка {number}: {error}"))
+        # Нарушение политики безопасности (CSP, D-059) браузер пишет в консоль — это тоже ошибка.
+        page.on(
+            "console",
+            lambda message: "Content Security Policy" in message.text
+            and self.errors.append(f"{self.login}, вкладка {number}: {message.text}"),
+        )
         if before is not None:
             before(page)
         page.goto("/login")

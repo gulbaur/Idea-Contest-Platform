@@ -5,6 +5,7 @@
 """
 
 import re
+import time
 
 import pytest
 from playwright.sync_api import expect
@@ -110,10 +111,15 @@ def test_same_idea_saved_from_two_tabs_at_once(people, api):
         page.locator("section.editing").get_by_role("button", name="Сохранить").click()
     barrier.release()
 
-    saved = api("anna").idea(contest["id"], "Название из первой вкладки") or api("anna").idea(
-        contest["id"], "Название из второй вкладки"
-    )
-    assert saved is not None and saved["version"] == 2  # сохранилась ровно одна правка
+    # Отпущенные запросы ещё идут к серверу: ждём, пока правка сохранится, а не читаем сразу.
+    deadline = time.monotonic() + 10
+    while not (
+        saved := api("anna").idea(contest["id"], "Название из первой вкладки")
+        or api("anna").idea(contest["id"], "Название из второй вкладки")
+    ):
+        assert time.monotonic() < deadline, "ни одна правка не сохранилась"
+        time.sleep(0.1)
+    assert saved["version"] == 2  # сохранилась ровно одна правка
     loser = second if saved["title"] == "Название из первой вкладки" else first
     # Проигравшая вкладка не перезаписала чужую правку: показала конфликт и актуальный текст.
     expect(loser.get_by_text("Идею уже изменили в другой вкладке")).to_be_visible()

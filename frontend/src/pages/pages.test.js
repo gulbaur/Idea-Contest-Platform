@@ -15,7 +15,7 @@ vi.mock('../lib/api.js', async (importOriginal) => {
   return {
     ...real,
     api: {
-      login: fn(), logout: fn(), me: fn(), health: fn(), contests: fn(), contest: fn(), employees: fn(),
+      login: fn(), logout: fn(), me: fn(), demo: fn(), health: fn(), contests: fn(), contest: fn(), employees: fn(),
       createContest: fn(), emails: fn(), participants: fn(),
     },
   }
@@ -28,6 +28,14 @@ let router
 beforeEach(() => {
   vi.clearAllMocks()
   api.health.mockResolvedValue({ server_time: new Date(NOW).toISOString() })
+  api.demo.mockResolvedValue({
+    enabled: true,
+    password: 'demo-password',
+    accounts: [
+      { login: 'organizer', display_name: 'Организатор', role: 'organizer' },
+      { login: 'boris', display_name: 'Борис Котов', role: 'employee' },
+    ],
+  })
 })
 
 afterEach(() => {
@@ -94,6 +102,14 @@ describe('вход', () => {
     await button(wrapper, 'Борис Котов').trigger('click')
     await flushPromises()
     expect(api.login).toHaveBeenCalledWith('boris', 'demo-password')
+  })
+
+  it('вне демо-режима нет ни демо-аккаунтов, ни пароля', async () => {
+    api.demo.mockResolvedValue({ enabled: false, password: null, accounts: [] })
+    ;({ wrapper } = await mountAt('/login'))
+    expect(wrapper.text()).not.toContain('Демо-аккаунты')
+    expect(wrapper.text()).not.toContain('demo-password')
+    expect(wrapper.find('form').exists()).toBe(true)
   })
 })
 
@@ -261,7 +277,7 @@ describe('почта', () => {
     api.emails.mockResolvedValue([letter(3, USERS.boris, 'final', 'Итоги конкурса')])
     ;({ wrapper } = await mountAt('/mail?contest=7'))
 
-    expect(api.emails).toHaveBeenCalledWith({ contest_id: 7 })
+    expect(api.emails).toHaveBeenCalledWith({ contest_id: 7, limit: 50 })
     expect(wrapper.text()).toContain('Журнал всех писем')
     expect(wrapper.find('.meta').text()).toContain('Борис Котов')
   })
@@ -276,5 +292,26 @@ describe('почта', () => {
     realtime.emit({ type: 'mail_changed' })
     await flushPromises()
     expect(wrapper.findAll('button[data-letter-id]')).toHaveLength(1)
+  })
+
+  it('письма догружаются порциями: «Показать ещё» продолжает с последнего письма', async () => {
+    signIn(USERS.anna)
+    api.contests.mockResolvedValue([])
+    const first = Array.from({ length: 50 }, (_, n) => letter(n + 1, USERS.anna, 'final', `Письмо ${n + 1}`))
+    api.emails.mockResolvedValueOnce(first).mockResolvedValueOnce([letter(51, USERS.anna, 'final', 'Письмо 51')])
+    ;({ wrapper } = await mountAt('/mail'))
+    expect(wrapper.findAll('button[data-letter-id]')).toHaveLength(50)
+
+    await button(wrapper, 'Показать ещё').trigger('click')
+    await flushPromises()
+
+    expect(api.emails).toHaveBeenLastCalledWith({
+      contest_id: undefined,
+      limit: 50,
+      before_time: first[49].created_at,
+      before_id: 50,
+    })
+    expect(wrapper.findAll('button[data-letter-id]')).toHaveLength(51)
+    expect(wrapper.text()).not.toContain('Показать ещё') // порция неполная — больше писем нет
   })
 })

@@ -137,3 +137,14 @@ def test_new_tab_needs_its_own_login(people):
     fresh.goto("/contests")
     expect(fresh).to_have_url(re.compile(r"/login"))
     fresh.close()
+
+
+def test_pages_are_served_with_security_headers(api):
+    """CSP и другие заголовки (D-059): страница и её файлы — только со своего адреса."""
+    response = api("anna").request.get("/contests")
+    headers = response.headers
+    csp = headers["content-security-policy"]
+    assert "script-src 'self'" in csp
+    assert "frame-ancestors 'none'" in csp
+    assert headers["x-content-type-options"] == "nosniff"
+    assert headers["referrer-policy"] == "no-referrer"

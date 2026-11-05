@@ -11,6 +11,7 @@ from sqlalchemy import delete, select
 from app.deps import ClockDep, CurrentUserDep, DbSession, HubDep
 from app.models import User, UserSession
 from app.schemas import StorableText
+from app.seed import DEMO_USERS
 from app.security import (
     DUMMY_PASSWORD_HASH,
     hash_session_token,
@@ -42,6 +43,20 @@ class LoginOut(BaseModel):
     user: UserOut
 
 
+class DemoAccountOut(BaseModel):
+    login: str
+    display_name: str
+    role: str
+
+
+class DemoOut(BaseModel):
+    """Демо-режим (D-059): публичный пароль и аккаунты для быстрого входа на странице входа."""
+
+    enabled: bool
+    password: str | None = None
+    accounts: list[DemoAccountOut] = []
+
+
 @router.post("/login", response_model=LoginOut)
 async def login(payload: LoginIn, request: Request, db: DbSession, clock: ClockDep) -> LoginOut:
     user = await db.scalar(select(User).where(User.login == payload.login.strip().lower()))
@@ -62,6 +77,11 @@ async def login(payload: LoginIn, request: Request, db: DbSession, clock: ClockD
 
     token = new_session_token()
     now = clock.now()
+    # Истёкшие сессии этого пользователя больше не действуют — удаляем их при входе,
+    # чтобы таблица не росла бесконечно (D-059). Поиск по user_id идёт по индексу.
+    await db.execute(
+        delete(UserSession).where(UserSession.user_id == user.id, UserSession.expires_at <= now)
+    )
     expires_at = now + timedelta(hours=request.app.state.settings.session_ttl_hours)
     db.add(
         UserSession(
@@ -82,6 +102,24 @@ async def logout(current: CurrentUserDep, db: DbSession, hub: HubDep) -> Respons
     await db.commit()
     hub.close_session(current.session_id)  # WebSocket этой вкладки тоже закрывается (D-039)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/demo", response_model=DemoOut)
+async def demo(request: Request, db: DbSession) -> DemoOut:
+    """Без входа. Вне демо-режима (`SEED_DEMO_DATA=false`) пароль и аккаунты не раскрываются."""
+    settings = request.app.state.settings
+    if not settings.seed_demo_data:
+        return DemoOut(enabled=False)
+    order = {login: index for index, (login, _, _) in enumerate(DEMO_USERS)}
+    users = (await db.scalars(select(User).where(User.login.in_(order)))).all()
+    return DemoOut(
+        enabled=True,
+        password=settings.demo_password,
+        accounts=[
+            DemoAccountOut(login=u.login, display_name=u.display_name, role=u.role)
+            for u in sorted(users, key=lambda u: order[u.login])
+        ],
+    )
 
 
 @router.get("/me", response_model=UserOut)

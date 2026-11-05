@@ -3,9 +3,9 @@
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Query
-from pydantic import BaseModel
-from sqlalchemy import or_, select
+from fastapi import APIRouter, HTTPException, Query, status
+from pydantic import AwareDatetime, BaseModel
+from sqlalchemy import or_, select, tuple_
 
 from app.deps import ClockDep, CurrentUserDep, DbSession
 from app.models import Contest, Email, EmailKind, Role, User
@@ -37,8 +37,14 @@ async def list_emails(
     clock: ClockDep,
     contest_id: Annotated[int | None, Query(ge=1, le=2_147_483_647)] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 200,
+    before_time: AwareDatetime | None = None,
+    before_id: Annotated[int | None, Query(ge=1, le=2_147_483_647)] = None,
 ) -> list[EmailOut]:
     """Участник видит только свои письма; организатор — журнал всех писем.
+
+    Письма идут от новых к старым порциями по `limit`. Следующая порция — с `before_time`
+    и `before_id` последнего полученного письма (D-059): курсор задаёт сам клиент, поэтому
+    по нему нельзя узнать ничего о чужих письмах.
 
     Напоминания незавершённого конкурса организатору не показываются: по их получателям
     видно, кто ещё не подал идею, а значит — кто автор поданных (D-058). После финала
@@ -59,6 +65,13 @@ async def list_emails(
         )
     if contest_id is not None:
         statement = statement.where(Email.contest_id == contest_id)
+    if (before_time is None) != (before_id is None):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="before_time и before_id передаются вместе",
+        )
+    if before_time is not None:
+        statement = statement.where(tuple_(Email.created_at, Email.id) < tuple_(before_time, before_id))
     return [
         EmailOut(
             id=email.id,

@@ -1,23 +1,25 @@
 <script setup>
 // Вход. Каждая вкладка входит отдельно (D-003): в двух вкладках можно работать
 // под разными пользователями, например участником и организатором.
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import Icon from '../components/Icon.vue'
 import { api } from '../lib/api.js'
 import { setSession } from '../lib/session.js'
 
-// Синтетические демо-аккаунты (backend/app/seed.py). Пароль публичный — D-004.
-const DEMO_PASSWORD = 'demo-password'
-const DEMO_ACCOUNTS = [
-  { login: 'organizer', name: 'Организатор', role: 'организатор' },
-  { login: 'anna', name: 'Анна Смирнова', role: 'участник' },
-  { login: 'boris', name: 'Борис Котов', role: 'участник' },
-  { login: 'vera', name: 'Вера Орлова', role: 'участник' },
-  { login: 'gleb', name: 'Глеб Лебедев', role: 'участник' },
-  { login: 'dina', name: 'Дина Ахметова', role: 'участник' },
-]
+// Демо-аккаунты и их публичный пароль (D-004) сообщает сервер, и только в демо-режиме
+// (D-059): вне его блок не показывается, а пароль не попадает в код страницы.
+const demo = ref(null)
+const ROLE_NAMES = { organizer: 'организатор', employee: 'участник' }
+onMounted(async () => {
+  try {
+    const info = await api.demo()
+    demo.value = info?.enabled ? info : null
+  } catch {
+    demo.value = null // без блока демо-аккаунтов вход по логину и паролю всё равно работает
+  }
+})
 
 const route = useRoute()
 const router = useRouter()
@@ -50,7 +52,7 @@ async function submit() {
 
 function useDemo(account) {
   login.value = account.login
-  password.value = DEMO_PASSWORD
+  password.value = demo.value.password
   submit()
 }
 </script>
@@ -119,20 +121,20 @@ function useDemo(account) {
         </button>
       </form>
 
-      <div class="card demo">
+      <div v-if="demo" class="card demo">
         <div class="row">
           <h3>Демо-аккаунты</h3>
-          <span class="faint">пароль <code class="mono">{{ DEMO_PASSWORD }}</code></span>
+          <span class="faint">пароль <code class="mono">{{ demo.password }}</code></span>
         </div>
         <ul class="accounts">
-          <li v-for="account in DEMO_ACCOUNTS" :key="account.login">
+          <li v-for="account in demo.accounts" :key="account.login">
             <button class="account" type="button" :disabled="pending" @click="useDemo(account)">
-              <span class="avatar" :class="{ organizer: account.login === 'organizer' }">
-                <Icon :name="account.login === 'organizer' ? 'flag' : 'user'" :size="16" />
+              <span class="avatar" :class="{ organizer: account.role === 'organizer' }">
+                <Icon :name="account.role === 'organizer' ? 'flag' : 'user'" :size="16" />
               </span>
               <span class="who">
-                <strong>{{ account.name }}</strong>
-                <small>{{ account.login }} · {{ account.role }}</small>
+                <strong>{{ account.display_name }}</strong>
+                <small>{{ account.login }} · {{ ROLE_NAMES[account.role] ?? account.role }}</small>
               </span>
               <Icon name="arrow-left" class="go" :size="16" />
             </button>

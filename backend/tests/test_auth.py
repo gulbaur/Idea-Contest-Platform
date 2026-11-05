@@ -162,3 +162,32 @@ async def test_repeated_logout_with_same_token_is_rejected(client):
     token = await login(client, "boris")
     assert (await client.post("/api/auth/logout", headers=auth(token))).status_code == 204
     assert (await client.post("/api/auth/logout", headers=auth(token))).status_code == 401
+
+
+async def test_login_removes_expired_sessions_of_the_user(client, app, clock):
+    old = await login(client, "anna")
+    other_user = await login(client, "boris")
+    clock.advance(timedelta(hours=25))  # обе сессии истекли
+    fresh = await login(client, "anna")
+
+    async with app.state.sessionmaker() as db:
+        hashes = set((await db.scalars(select(UserSession.token_hash))).all())
+    assert hash_session_token(old) not in hashes  # истёкшая сессия Анны удалена
+    assert hash_session_token(fresh) in hashes
+    # Чужие сессии вход Анны не трогает: они удалятся при входе своего владельца.
+    assert hash_session_token(other_user) in hashes
+
+
+async def test_demo_endpoint_lists_demo_accounts_in_demo_mode(client, app):
+    app.state.settings.seed_demo_data = True
+    body = (await client.get("/api/auth/demo")).json()
+
+    assert body["enabled"] is True
+    assert body["password"] == TEST_PASSWORD
+    assert [a["login"] for a in body["accounts"]] == ["organizer", "anna", "boris", "vera", "gleb", "dina"]
+    assert body["accounts"][0] == {"login": "organizer", "display_name": "Организатор", "role": "organizer"}
+
+
+async def test_demo_endpoint_reveals_nothing_outside_demo_mode(client, app):
+    app.state.settings.seed_demo_data = False
+    assert (await client.get("/api/auth/demo")).json() == {"enabled": False, "password": None, "accounts": []}
