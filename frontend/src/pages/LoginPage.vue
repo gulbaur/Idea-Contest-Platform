@@ -11,7 +11,8 @@ import { setSession } from '../lib/session.js'
 // Демо-аккаунты и их публичный пароль (D-004) сообщает сервер, и только в демо-режиме
 // (D-059): вне его блок не показывается, а пароль не попадает в код страницы.
 const demo = ref(null)
-const ROLE_NAMES = { organizer: 'организатор', employee: 'участник' }
+const ROLE_NAMES = { admin: 'администратор', organizer: 'организатор', employee: 'участник' }
+const ROLE_ICONS = { admin: 'settings', organizer: 'flag', employee: 'user' }
 onMounted(async () => {
   try {
     const info = await api.demo()
@@ -42,7 +43,7 @@ async function submit() {
     const result = await api.login(login.value.trim(), password.value)
     setSession({ token: result.token, user: result.user })
     const redirect = typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/')
-    await router.replace(redirect ? route.query.redirect : '/contests')
+    await router.replace(redirect ? route.query.redirect : '/')
   } catch (failure) {
     error.value = failure.message
   } finally {
@@ -135,8 +136,8 @@ function useDemo(account) {
               :disabled="pending"
               @click="useDemo(account)"
             >
-              <span class="avatar" :class="{ organizer: account.role === 'organizer' }">
-                <Icon :name="account.role === 'organizer' ? 'flag' : 'user'" :size="16" />
+              <span class="avatar" :class="account.role">
+                <Icon :name="ROLE_ICONS[account.role] ?? 'user'" :size="16" />
               </span>
               <span class="who">
                 <strong>{{ account.display_name }}</strong>
@@ -283,6 +284,11 @@ function useDemo(account) {
 .avatar.organizer {
   background: var(--gold-soft);
   color: var(--warning);
+}
+
+.avatar.admin {
+  background: var(--phase-voting-soft);
+  color: var(--phase-voting);
 }
 
 .who {

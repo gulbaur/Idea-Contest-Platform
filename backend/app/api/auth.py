@@ -6,14 +6,17 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.deps import ClockDep, CurrentUserDep, DbSession, HubDep
-from app.models import FONTS, LOCALES, THEMES, User, UserSession
+from app.models import FONTS, LOCALES, THEMES, AuditEvent, LoginThrottle, User, UserSession
+from app.passwords import MAX_LENGTH, password_problem
 from app.schemas import StorableText
 from app.seed import DEMO_USERS
 from app.security import (
     DUMMY_PASSWORD_HASH,
+    hash_password,
     hash_session_token,
     new_session_token,
     verify_password,
@@ -86,40 +89,78 @@ class DemoOut(BaseModel):
     accounts: list[DemoAccountOut] = []
 
 
+# Ограничение попыток входа (D-062).
+MAX_FAILURES = 5
+LOCK_TIME = timedelta(minutes=15)
+
+
+def _too_many(locked_until: datetime, now: datetime) -> HTTPException:
+    minutes = max(1, int((locked_until - now).total_seconds() + 59) // 60)
+    return HTTPException(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        detail=f"Слишком много неудачных попыток входа. Попробуйте снова через {minutes} мин.",
+        headers={"Retry-After": str(minutes * 60)},
+    )
+
+
+async def _record_failure(db, key: str, now: datetime) -> None:
+    """+1 неудачная попытка; пятая подряд закрывает вход на LOCK_TIME. Атомарно для параллельных запросов."""
+    failures = await db.scalar(
+        pg_insert(LoginThrottle)
+        .values(login=key, failures=1, locked_until=None)
+        .on_conflict_do_update(index_elements=["login"], set_={"failures": LoginThrottle.failures + 1})
+        .returning(LoginThrottle.failures)
+    )
+    if failures >= MAX_FAILURES:
+        await db.execute(
+            update(LoginThrottle)
+            .where(LoginThrottle.login == key)
+            .values(failures=0, locked_until=now + LOCK_TIME)
+        )
+    await db.commit()
+
+
+def _new_session(db, user: User, request: Request, now: datetime) -> tuple[str, datetime]:
+    token = new_session_token()
+    expires_at = now + timedelta(hours=request.app.state.settings.session_ttl_hours)
+    db.add(UserSession(user_id=user.id, token_hash=hash_session_token(token), created_at=now, expires_at=expires_at))
+    user.last_login_at = now
+    return token, expires_at
+
+
 @router.post("/login", response_model=LoginOut)
 async def login(payload: LoginIn, request: Request, db: DbSession, clock: ClockDep) -> LoginOut:
-    user = await db.scalar(select(User).where(User.login == payload.login.strip().lower()))
+    key = payload.login.strip().lower()
+    now = clock.now()
+    throttle = await db.get(LoginThrottle, key)
+    if throttle is not None and throttle.locked_until is not None and throttle.locked_until > now:
+        raise _too_many(throttle.locked_until, now)
+    user = await db.scalar(select(User).where(User.login == key))
     # Завершаем транзакцию чтения до проверки пароля: соединение возвращается в пул
     # и не простаивает десятки миллисекунд scrypt (D-038). Объект user остаётся доступен.
     await db.commit()
-    # Пароль проверяется и для несуществующего логина (против хеша-пустышки),
-    # чтобы по времени ответа нельзя было узнать, какие логины существуют.
+    # Пароль проверяется и для несуществующего, отключённого или ещё не задавшего пароль
+    # пользователя (против хеша-пустышки): по ответу и его времени нельзя узнать,
+    # какие логины существуют и в каком они состоянии (D-062).
     # scrypt занимает десятки миллисекунд процессора — выполняем в отдельном потоке,
     # чтобы не задерживать другие запросы и WebSocket в цикле событий.
+    usable = user is not None and user.is_active and user.password_hash is not None
     password_ok = await asyncio.to_thread(
-        verify_password, payload.password, user.password_hash if user else DUMMY_PASSWORD_HASH
+        verify_password, payload.password, user.password_hash if usable else DUMMY_PASSWORD_HASH
     )
-    if user is None or not password_ok:
+    if not (usable and password_ok):
+        await _record_failure(db, key, now)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверный логин или пароль"
         )
 
-    token = new_session_token()
-    now = clock.now()
+    await db.execute(delete(LoginThrottle).where(LoginThrottle.login == key))
     # Истёкшие сессии этого пользователя больше не действуют — удаляем их при входе,
     # чтобы таблица не росла бесконечно (D-059). Поиск по user_id идёт по индексу.
     await db.execute(
         delete(UserSession).where(UserSession.user_id == user.id, UserSession.expires_at <= now)
     )
-    expires_at = now + timedelta(hours=request.app.state.settings.session_ttl_hours)
-    db.add(
-        UserSession(
-            user_id=user.id,
-            token_hash=hash_session_token(token),
-            created_at=now,
-            expires_at=expires_at,
-        )
-    )
+    token, expires_at = _new_session(db, user, request, now)
     await db.commit()
     return LoginOut(token=token, expires_at=expires_at, user=UserOut.of(user))
 
@@ -165,3 +206,101 @@ async def update_preferences(payload: PreferencesIn, current: CurrentUserDep, db
         setattr(user, field, value)
     await db.commit()
     return UserOut.of(user)
+
+
+
+# --- первый вход по ссылке и смена пароля (D-062) -------------------------------------
+
+LINK_INVALID = "Ссылка недействительна или устарела — попросите администратора выдать новую"
+
+
+class SetupCheckIn(BaseModel):
+    token: str = Field(min_length=1, max_length=256)
+
+
+class SetupCheckOut(BaseModel):
+    login: str
+    display_name: str
+
+
+class SetupIn(BaseModel):
+    token: str = Field(min_length=1, max_length=256)
+    password: str = Field(min_length=1, max_length=MAX_LENGTH)
+
+
+class PasswordChangeIn(BaseModel):
+    current_password: str = Field(min_length=1, max_length=MAX_LENGTH)
+    new_password: str = Field(min_length=1, max_length=MAX_LENGTH)
+
+
+def _invalid_password(problem: str) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=problem)
+
+
+async def _user_by_link(db, token: str, now: datetime, *, lock: bool = False) -> User:
+    statement = select(User).where(User.setup_token_hash == hash_session_token(token))
+    if lock:
+        statement = statement.with_for_update()
+    user = await db.scalar(statement)
+    if user is None or not user.is_active or user.setup_expires_at is None or user.setup_expires_at <= now:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=LINK_INVALID)
+    return user
+
+
+@router.post("/setup/check", response_model=SetupCheckOut)
+async def setup_check(payload: SetupCheckIn, db: DbSession, clock: ClockDep) -> SetupCheckOut:
+    """Без входа: для чьей учётной записи ссылка (чтобы показать имя на странице).
+
+    Токен — в теле запроса, а не в адресе: адреса попадают в журналы серверов (как и в D-003).
+    """
+    user = await _user_by_link(db, payload.token, clock.now())
+    return SetupCheckOut(login=user.login, display_name=user.display_name)
+
+
+@router.post("/setup", response_model=LoginOut)
+async def setup(payload: SetupIn, request: Request, db: DbSession, clock: ClockDep, hub: HubDep) -> LoginOut:
+    """Задать пароль по одноразовой ссылке и сразу войти. Ссылка после этого не действует."""
+    now = clock.now()
+    # Блокировка строки: два одновременных перехода по одной ссылке — второй получит 404.
+    user = await _user_by_link(db, payload.token, now, lock=True)
+    problem = password_problem(payload.password, user.login)
+    if problem:
+        raise _invalid_password(problem)
+    user.password_hash = await asyncio.to_thread(hash_password, payload.password)
+    user.setup_token_hash = None
+    user.setup_expires_at = None
+    await db.execute(delete(UserSession).where(UserSession.user_id == user.id))
+    db.add(AuditEvent(actor_id=user.id, action="password_set", target_user_id=user.id, details=None, created_at=now))
+    token, expires_at = _new_session(db, user, request, now)
+    await db.commit()
+    hub.close_user(user.id)  # вкладки со старым паролем — выход (новая вкладка ещё не подключена)
+    return LoginOut(token=token, expires_at=expires_at, user=UserOut.of(user))
+
+
+@router.post("/password", status_code=status.HTTP_204_NO_CONTENT)
+async def change_password(
+    payload: PasswordChangeIn, current: CurrentUserDep, db: DbSession, clock: ClockDep, hub: HubDep
+) -> Response:
+    """Смена пароля с вводом текущего. Остальные вкладки и устройства выходят, эта — остаётся."""
+    user = current.user
+    current_ok = await asyncio.to_thread(
+        verify_password, payload.current_password, user.password_hash or DUMMY_PASSWORD_HASH
+    )
+    if not current_ok:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Текущий пароль указан неверно")
+    problem = password_problem(payload.new_password, user.login)
+    if problem:
+        raise _invalid_password(problem)
+    if payload.new_password == payload.current_password:
+        raise _invalid_password("Новый пароль совпадает с текущим")
+    new_hash = await asyncio.to_thread(hash_password, payload.new_password)
+    now = clock.now()
+    locked = await db.scalar(select(User).where(User.id == user.id).with_for_update())
+    locked.password_hash = new_hash
+    await db.execute(
+        delete(UserSession).where(UserSession.user_id == user.id, UserSession.id != current.session_id)
+    )
+    db.add(AuditEvent(actor_id=user.id, action="password_changed", target_user_id=user.id, details=None, created_at=now))
+    await db.commit()
+    hub.close_user(user.id, keep_session=current.session_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

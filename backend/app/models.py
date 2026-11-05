@@ -6,6 +6,7 @@ from enum import StrEnum
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -18,6 +19,7 @@ from sqlalchemy import (
     Uuid,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.sql import true
 
 # Явные имена ограничений: одинаковые в моделях и миграциях,
 # поэтому тест сравнения схемы (test_migrations.py) не даёт ложных различий.
@@ -35,6 +37,7 @@ class Base(DeclarativeBase):
 
 
 class Role(StrEnum):
+    ADMIN = "admin"  # управляет сотрудниками и ролями (D-062)
     ORGANIZER = "organizer"
     EMPLOYEE = "employee"
 
@@ -52,7 +55,7 @@ def _one_of(column: str, values: tuple[str, ...]) -> str:
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (
-        CheckConstraint("role IN ('organizer', 'employee')", name="role_valid"),
+        CheckConstraint("role IN ('admin', 'organizer', 'employee')", name="role_valid"),
         CheckConstraint(_one_of("theme", THEMES), name="theme_valid"),
         CheckConstraint(_one_of("font", FONTS), name="font_valid"),
         CheckConstraint(_one_of("locale", LOCALES), name="locale_valid"),
@@ -61,10 +64,17 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     login: Mapped[str] = mapped_column(String(64), unique=True)
     display_name: Mapped[str] = mapped_column(String(128))
-    email: Mapped[str] = mapped_column(String(254))
+    email: Mapped[str] = mapped_column(String(254), unique=True)
     role: Mapped[str] = mapped_column(String(16))
-    password_hash: Mapped[str] = mapped_column(String(255))
+    # Нет, пока приглашённый сотрудник не задал пароль по ссылке (D-062).
+    password_hash: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Отключённый не входит и не получает писем; история (идеи, голоса, письма) остаётся.
+    is_active: Mapped[bool] = mapped_column(Boolean, server_default=true())
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Одноразовая ссылка для задания пароля: хранится только SHA-256 токена (как у сессий).
+    setup_token_hash: Mapped[str | None] = mapped_column(String(64), unique=True)
+    setup_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Настройки вида (D-060): хранятся у пользователя, а не в браузере.
     theme: Mapped[str] = mapped_column(String(16), server_default="system")
     font: Mapped[str] = mapped_column(String(16), server_default="inter")
@@ -231,4 +241,32 @@ class Email(Base):
     kind: Mapped[str] = mapped_column(String(32))
     subject: Mapped[str] = mapped_column(String(300))
     body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class LoginThrottle(Base):
+    """Неудачные попытки входа по логину (D-062): после 5 подряд вход закрыт на 15 минут.
+
+    Ключ — введённый логин, существует он или нет: иначе по ответу «слишком много попыток»
+    можно было бы узнать, какие логины есть в системе.
+    """
+
+    __tablename__ = "login_throttle"
+
+    login: Mapped[str] = mapped_column(String(64), primary_key=True)
+    failures: Mapped[int] = mapped_column(Integer)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AuditEvent(Base):
+    """Журнал действий с учётными записями (D-062): кто, когда, что и с кем сделал."""
+
+    __tablename__ = "audit_events"
+    __table_args__ = (Index("ix_audit_events_created_at", "created_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    actor_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    action: Mapped[str] = mapped_column(String(32))
+    target_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    details: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

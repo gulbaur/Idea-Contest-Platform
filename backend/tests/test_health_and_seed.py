@@ -30,4 +30,4 @@ async def test_seed_is_idempotent(app, clock):
     assert created_second == 0
     assert total == len(DEMO_USERS)
     assert roles["organizer"] == "organizer"
-    assert sum(1 for role in roles.values() if role == "employee") == len(DEMO_USERS) - 1
+    assert sum(1 for role in roles.values() if role == "employee") == len(DEMO_USERS) - 2  # без организатора и администратора

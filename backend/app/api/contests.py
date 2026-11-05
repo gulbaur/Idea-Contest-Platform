@@ -89,18 +89,27 @@ def _invalid(detail: str) -> HTTPException:
 
 @router.get("/users", response_model=list[EmployeeOut])
 async def list_employees(current: CurrentUserDep, db: DbSession) -> list[EmployeeOut]:
-    """Сотрудники для выбора участников при создании конкурса."""
+    """Сотрудники для выбора участников при создании конкурса — только с действующим доступом."""
     ensure_organizer(current.user)
     rows = await db.execute(
         select(User.id, User.login, User.display_name)
-        .where(User.role == Role.EMPLOYEE)
+        .where(User.role == Role.EMPLOYEE, User.is_active)
         .order_by(User.display_name, User.id)
     )
     return [EmployeeOut(id=r.id, login=r.login, display_name=r.display_name) for r in rows]
 
 
-async def _employee_ids(db: AsyncSession) -> set[int]:
-    return set((await db.scalars(select(User.id).where(User.role == Role.EMPLOYEE))).all())
+async def _employee_ids(db: AsyncSession, *, lock: bool = False) -> set[int]:
+    """Сотрудники, которых можно включить в конкурс: роль «сотрудник» и доступ не отключён.
+
+    `lock=True` — блокировка строк «на чтение» до конца транзакции (D-062): пока конкурс
+    создаётся, администратор не сменит роль и не отключит этих людей, а если уже начал —
+    создание дождётся и увидит итог. Так участник идущего конкурса не станет организатором.
+    """
+    statement = select(User.id).where(User.role == Role.EMPLOYEE, User.is_active)
+    if lock:
+        statement = statement.with_for_update(read=True)
+    return set((await db.scalars(statement)).all())
 
 
 async def _replayed(
@@ -157,7 +166,7 @@ async def create_contest(
     if payload.voting_deadline <= payload.submission_deadline:
         raise _invalid("Срок окончания голосования должен быть позже окончания приёма идей")
 
-    employee_ids = await _employee_ids(db)
+    employee_ids = await _employee_ids(db, lock=True)
     if payload.participant_ids is None:
         participant_ids = employee_ids
     else:

@@ -20,6 +20,7 @@ from app.security import hash_password
 
 # (логин, отображаемое имя, роль)
 DEMO_USERS: list[tuple[str, str, Role]] = [
+    ("admin", "Администратор", Role.ADMIN),
     ("organizer", "Организатор", Role.ORGANIZER),
     ("anna", "Анна Смирнова", Role.EMPLOYEE),
     ("boris", "Борис Котов", Role.EMPLOYEE),

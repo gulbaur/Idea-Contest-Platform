@@ -53,3 +53,4 @@ export function clearSession() {
 }
 
 export const isOrganizer = () => session.user?.role === 'organizer'
+export const isAdmin = () => session.user?.role === 'admin'

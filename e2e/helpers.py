@@ -22,6 +22,7 @@ BASE_URL = os.environ.get("BASE_URL", "http://localhost:8080")
 DEMO_PASSWORD = os.environ.get("DEMO_PASSWORD", "demo-password")
 
 NAMES = {
+    "admin": "Администратор",
     "organizer": "Организатор",
     "anna": "Анна Смирнова",
     "boris": "Борис Котов",
@@ -29,7 +30,7 @@ NAMES = {
     "gleb": "Глеб Лебедев",
     "dina": "Дина Ахметова",
 }
-EMPLOYEE_NAMES = [name for login, name in NAMES.items() if login != "organizer"]
+EMPLOYEE_NAMES = [name for login, name in NAMES.items() if login not in ("organizer", "admin")]
 
 # Демо-конкурсы (backend/app/demo.py, D-054).
 DEMO_SUBMISSION = "Как сделать офис уютнее"

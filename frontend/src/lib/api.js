@@ -32,6 +32,9 @@ const FIELD_LABELS = {
   submission_deadline: 'Срок приёма идей',
   voting_deadline: 'Срок голосования',
   participant_ids: 'Участники',
+  display_name: 'Имя',
+  email: 'Почта',
+  role: 'Роль',
 }
 
 function validationMessage(errors) {
@@ -112,6 +115,18 @@ export const api = {
   me: () => request('GET', '/auth/me'),
   demo: () => request('GET', '/auth/demo'),
   updatePreferences: (changes) => request('PATCH', '/auth/me/preferences', { body: changes }),
+  changePassword: (current_password, new_password) =>
+    request('POST', '/auth/password', { body: { current_password, new_password } }),
+  setupCheck: (token) => request('POST', '/auth/setup/check', { body: { token } }),
+  setup: (token, password) => request('POST', '/auth/setup', { body: { token, password } }),
+
+  staff: () => request('GET', '/admin/users'),
+  inviteStaff: (payload) => request('POST', '/admin/users', { body: payload }),
+  updateStaff: (id, changes) => request('PATCH', `/admin/users/${id}`, { body: changes }),
+  disableStaff: (id) => request('POST', `/admin/users/${id}/disable`),
+  enableStaff: (id) => request('POST', `/admin/users/${id}/enable`),
+  issueSetupLink: (id) => request('POST', `/admin/users/${id}/setup-link`),
+  audit: (query) => request('GET', '/admin/audit', { query }),
 
   employees: () => request('GET', '/users'),
   contests: () => request('GET', '/contests'),

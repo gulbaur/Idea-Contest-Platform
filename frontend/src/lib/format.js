@@ -89,4 +89,4 @@ export const PHASE_LABELS = {
   finished: 'Завершён',
 }
 
-export const ROLE_LABELS = { organizer: 'Организатор', employee: 'Участник' }
+export const ROLE_LABELS = { admin: 'Администратор', organizer: 'Организатор', employee: 'Сотрудник' }

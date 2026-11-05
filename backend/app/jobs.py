@@ -195,12 +195,14 @@ def _final_text(contest: Contest, user: User, ranking: list[RankedIdea]) -> tupl
 
 
 def _participants(contest_id: int):
+    # Отключённым сотрудникам письма не отправляются (D-062); их идеи и голоса остаются.
     return (
         select(User)
         .join(
             ContestParticipant,
             (ContestParticipant.user_id == User.id) & (ContestParticipant.contest_id == contest_id),
         )
+        .where(User.is_active)
         .order_by(User.id)
     )
 

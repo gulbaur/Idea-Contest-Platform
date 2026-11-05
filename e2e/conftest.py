@@ -91,7 +91,9 @@ class Person:
             before(page)
         page.goto("/login")
         page.get_by_role("button", name=re.compile(self.name)).click()
-        expect(page.get_by_role("heading", name="Конкурсы", exact=True)).to_be_visible()
+        # Стартовая страница администратора — «Сотрудники», остальных — «Конкурсы» (D-062).
+        home = "Сотрудники" if self.login == "admin" else "Конкурсы"
+        expect(page.get_by_role("heading", name=home, exact=True)).to_be_visible()
         expect(page.get_by_text("Онлайн")).to_be_visible()
         if path is not None:
             page.goto(path)

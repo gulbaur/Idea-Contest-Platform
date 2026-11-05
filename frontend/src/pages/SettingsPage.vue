@@ -1,7 +1,7 @@
 <script setup>
 // Настройки (D-060): тема и шрифт применяются сразу и сохраняются у пользователя на сервере —
 // они одинаковы во всех его вкладках и на любом устройстве. Ошибка сохранения возвращает прежнее.
-import { ref } from 'vue'
+import { reactive, ref } from 'vue'
 
 import Icon from '../components/Icon.vue'
 import { api } from '../lib/api.js'
@@ -25,6 +25,34 @@ const FONT_OPTIONS = [
 const saving = ref(false)
 const saved = ref(false)
 let savedTimer
+
+// --- смена пароля (D-062) ---------------------------------------------------------
+const passwords = reactive({ current: '', next: '', repeat: '' })
+const passwordError = ref('')
+const changingPassword = ref(false)
+
+async function changePassword() {
+  if (changingPassword.value) return
+  passwordError.value = ''
+  if (!passwords.current || !passwords.next) {
+    passwordError.value = 'Введите текущий и новый пароль'
+    return
+  }
+  if (passwords.next !== passwords.repeat) {
+    passwordError.value = 'Новые пароли не совпадают'
+    return
+  }
+  changingPassword.value = true
+  try {
+    await api.changePassword(passwords.current, passwords.next)
+    Object.assign(passwords, { current: '', next: '', repeat: '' })
+    notify.success('Пароль изменён. Другие вкладки и устройства вышли из системы.')
+  } catch (failure) {
+    passwordError.value = failure.message
+  } finally {
+    changingPassword.value = false
+  }
+}
 
 async function choose(field, value) {
   if (preferences[field] === value) return
@@ -119,6 +147,34 @@ async function choose(field, value) {
           </span>
         </label>
       </fieldset>
+    </section>
+
+    <section class="card section">
+      <div class="section-head">
+        <h2>Пароль</h2>
+        <p class="muted">После смены пароля другие вкладки и устройства выйдут из системы, эта останется.</p>
+      </div>
+      <form class="stack password-form" novalidate @submit.prevent="changePassword">
+        <div class="field">
+          <label for="current-password">Текущий пароль</label>
+          <input id="current-password" v-model="passwords.current" class="input" type="password" autocomplete="current-password" />
+        </div>
+        <div class="field">
+          <label for="next-password">Новый пароль</label>
+          <input id="next-password" v-model="passwords.next" class="input" type="password" autocomplete="new-password" />
+          <span class="hint">Не короче 10 символов и не совпадает с логином.</span>
+        </div>
+        <div class="field">
+          <label for="repeat-password">Новый пароль ещё раз</label>
+          <input id="repeat-password" v-model="passwords.repeat" class="input" type="password" autocomplete="new-password" />
+        </div>
+        <div v-if="passwordError" class="notice notice-danger" role="alert"><Icon name="alert" class="icon" /> {{ passwordError }}</div>
+        <div>
+          <button class="btn btn-primary" type="submit" :disabled="changingPassword">
+            <span v-if="changingPassword" class="spinner" aria-hidden="true" /> Сменить пароль
+          </button>
+        </div>
+      </form>
     </section>
 
     <section class="card section">
@@ -275,6 +331,10 @@ async function choose(field, value) {
   font-size: var(--text-2xl);
   font-weight: 500;
   line-height: 1.2;
+}
+
+.password-form {
+  max-width: 420px;
 }
 
 .profile {

@@ -55,6 +55,8 @@ async def find_session(
             select(UserSession, User)
             .join(User, User.id == UserSession.user_id)
             .where(UserSession.token_hash == hash_session_token(token))
+            # Отключённый сотрудник теряет доступ сразу, даже если сессия ещё не удалена (D-062).
+            .where(User.is_active)
         )
     ).first()
     # Сессия действует строго до expires_at: в момент expires_at она уже недействительна.

@@ -135,6 +135,15 @@ class Hub:
             if connection.session_id == session_id:
                 connection.close(CLOSE_UNAUTHORIZED)
 
+    def close_user(self, user_id: int, *, keep_session: int | None = None) -> None:
+        """Отключение, смена роли или пароля (D-062): все вкладки пользователя выходят сразу.
+
+        `keep_session` — вкладка, в которой человек сам сменил пароль, остаётся в системе.
+        """
+        for connection in list(self._connections):
+            if connection.user_id == user_id and connection.session_id != keep_session:
+                connection.close(CLOSE_UNAUTHORIZED)
+
     async def contest_changed(
         self, contest_id: int, revision: int, *, restrict_to: int | None = None
     ) -> None:

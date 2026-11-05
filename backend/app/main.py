@@ -11,7 +11,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.api import auth, contests, emails, health, ideas, realtime, votes
+from app.api import admin, auth, contests, emails, health, ideas, realtime, votes
 from app.clock import Clock, SystemClock
 from app.config import Settings
 from app.db import create_engine, create_sessionmaker
@@ -63,6 +63,7 @@ def create_app(settings: Settings | None = None, clock: Clock | None = None) -> 
 
     app.include_router(health.router)
     app.include_router(auth.router)
+    app.include_router(admin.router)
     app.include_router(contests.router)
     app.include_router(ideas.router)
     app.include_router(votes.router)

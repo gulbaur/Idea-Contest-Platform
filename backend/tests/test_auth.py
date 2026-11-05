@@ -184,8 +184,8 @@ async def test_demo_endpoint_lists_demo_accounts_in_demo_mode(client, app):
 
     assert body["enabled"] is True
     assert body["password"] == TEST_PASSWORD
-    assert [a["login"] for a in body["accounts"]] == ["organizer", "anna", "boris", "vera", "gleb", "dina"]
-    assert body["accounts"][0] == {"login": "organizer", "display_name": "Организатор", "role": "organizer"}
+    assert [a["login"] for a in body["accounts"]] == ["admin", "organizer", "anna", "boris", "vera", "gleb", "dina"]
+    assert body["accounts"][1] == {"login": "organizer", "display_name": "Организатор", "role": "organizer"}
 
 
 async def test_demo_endpoint_reveals_nothing_outside_demo_mode(client, app):

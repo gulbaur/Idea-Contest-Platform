@@ -5,7 +5,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 
 import { ROLE_LABELS } from '../lib/format.js'
-import { session } from '../lib/session.js'
+import { isAdmin, session } from '../lib/session.js'
 import ConnectionStatus from './ConnectionStatus.vue'
 import Icon from './Icon.vue'
 
@@ -23,8 +23,11 @@ const initials = computed(() =>
 )
 
 // Раздел подсвечен и на вложенных страницах: /contests/5 — это тоже «Конкурсы».
+// Разделы зависят от роли (D-062): администратору — «Сотрудники», остальным — «Конкурсы».
 const sections = computed(() => [
-  { to: '/contests', label: 'Конкурсы', icon: 'list', active: route.path.startsWith('/contests') },
+  ...(isAdmin()
+    ? [{ to: '/employees', label: 'Сотрудники', icon: 'users', active: route.path.startsWith('/employees') }]
+    : [{ to: '/contests', label: 'Конкурсы', icon: 'list', active: route.path.startsWith('/contests') }]),
   { to: '/mail', label: 'Почта', icon: 'mail', active: route.path.startsWith('/mail') },
 ])
 
@@ -43,7 +46,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
     <button class="btn btn-ghost btn-sm menu" type="button" aria-label="Меню" :aria-expanded="open" @click="open = true">
       <Icon name="menu" :size="20" />
     </button>
-    <RouterLink to="/contests" class="brand" aria-label="Конкурс идей — на главную">
+    <RouterLink to="/" class="brand" aria-label="Конкурс идей — на главную">
       <span class="logo"><Icon name="bulb" :size="16" /></span>
       <span>Конкурс идей</span>
     </RouterLink>
@@ -52,7 +55,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   <div v-if="open" class="backdrop" aria-hidden="true" @click="open = false" />
 
   <aside class="sidebar" :class="{ open }" aria-label="Меню">
-    <RouterLink to="/contests" class="brand" aria-label="Конкурс идей — на главную">
+    <RouterLink to="/" class="brand" aria-label="Конкурс идей — на главную">
       <span class="logo"><Icon name="bulb" :size="16" /></span>
       <span>Конкурс идей</span>
     </RouterLink>
@@ -216,6 +219,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .avatar.organizer {
   background: var(--gold-soft);
   color: var(--warning);
+}
+
+.avatar.admin {
+  background: var(--phase-voting-soft);
+  color: var(--phase-voting);
 }
 
 .who {

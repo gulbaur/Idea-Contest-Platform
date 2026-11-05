@@ -25,7 +25,7 @@ const ICON = { success: 'check', error: 'alert', info: 'info' }
   position: fixed;
   right: 16px;
   bottom: 16px;
-  z-index: 60;
+  z-index: 80;
   display: flex;
   flex-direction: column;
   gap: 10px;

@@ -60,7 +60,7 @@ function onKeydown(event) {
 .backdrop {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: 70; /* поверх модальных окон (ModalDialog — 60): подтверждение действия внутри формы */
   display: grid;
   place-items: center;
   padding: 16px;
