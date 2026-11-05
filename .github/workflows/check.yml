@@ -1,0 +1,39 @@
+# Все проверки на GitHub (D-067): та же команда, что и локально (README, «Запуск тестов»).
+# Тесты backend, тесты интерфейса и браузерные E2E — в изолированной среде Docker Compose.
+name: Проверки
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: backend, интерфейс, E2E
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Версии Docker и Docker Compose
+        run: docker version --format '{{.Server.Version}}' && docker compose version
+
+      - name: Все проверки
+        run: sh scripts/check.sh
+
+      - name: Снимки экрана и трассы упавших E2E
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-results
+          path: e2e/results/
+          retention-days: 7
+          if-no-files-found: ignore
