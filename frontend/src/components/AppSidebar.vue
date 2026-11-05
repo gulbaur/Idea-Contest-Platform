@@ -5,6 +5,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 
 import { ROLE_LABELS } from '../lib/format.js'
+import { t } from '../lib/i18n.js'
 import { useSignals } from '../lib/connection.js'
 import { isAdmin, isOrganizer, session } from '../lib/session.js'
 import { refreshUnread, unread } from '../lib/unread.js'
@@ -28,12 +29,12 @@ const initials = computed(() =>
 // Разделы зависят от роли (D-062): администратору — «Сотрудники», остальным — «Конкурсы».
 const sections = computed(() => [
   ...(isAdmin()
-    ? [{ to: '/employees', label: 'Сотрудники', icon: 'users', active: route.path.startsWith('/employees') }]
-    : [{ to: '/contests', label: 'Конкурсы', icon: 'list', active: route.path.startsWith('/contests') }]),
-  { to: '/mail', label: 'Входящие', icon: 'inbox', active: route.path.startsWith('/mail'), badge: unread.count },
+    ? [{ to: '/employees', label: t('app.nav.employees'), icon: 'users', active: route.path.startsWith('/employees') }]
+    : [{ to: '/contests', label: t('app.nav.contests'), icon: 'list', active: route.path.startsWith('/contests') }]),
+  { to: '/mail', label: t('app.nav.mail'), icon: 'inbox', active: route.path.startsWith('/mail'), badge: unread.count },
   // Технический журнал всех писем — отдельно от личных «Входящих» (D-063).
   ...(isAdmin() || isOrganizer()
-    ? [{ to: '/journal', label: 'Журнал рассылки', icon: 'mail', active: route.path.startsWith('/journal') }]
+    ? [{ to: '/journal', label: t('app.nav.journal'), icon: 'mail', active: route.path.startsWith('/journal') }]
     : []),
 ])
 
@@ -55,24 +56,24 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
 <template>
   <header class="topbar">
-    <button class="btn btn-ghost btn-sm menu" type="button" aria-label="Меню" :aria-expanded="open" @click="open = true">
+    <button class="btn btn-ghost btn-sm menu" type="button" :aria-label="t('app.menu')" :aria-expanded="open" @click="open = true">
       <Icon name="menu" :size="20" />
     </button>
-    <RouterLink to="/" class="brand" aria-label="Конкурс идей — на главную">
+    <RouterLink to="/" class="brand" :aria-label="t('app.toHome')">
       <span class="logo"><Icon name="bulb" :size="16" /></span>
-      <span>Конкурс идей</span>
+      <span>{{ t('app.brand') }}</span>
     </RouterLink>
   </header>
 
   <div v-if="open" class="backdrop" aria-hidden="true" @click="open = false" />
 
-  <aside class="sidebar" :class="{ open }" aria-label="Меню">
-    <RouterLink to="/" class="brand" aria-label="Конкурс идей — на главную">
+  <aside class="sidebar" :class="{ open }" :aria-label="t('app.menu')">
+    <RouterLink to="/" class="brand" :aria-label="t('app.toHome')">
       <span class="logo"><Icon name="bulb" :size="16" /></span>
-      <span>Конкурс идей</span>
+      <span>{{ t('app.brand') }}</span>
     </RouterLink>
 
-    <nav class="nav" aria-label="Разделы">
+    <nav class="nav" :aria-label="t('app.sections')">
       <RouterLink
         v-for="item in sections"
         :key="item.to"
@@ -83,13 +84,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       >
         <Icon :name="item.icon" :size="18" />
         <span>{{ item.label }}</span>
-        <span v-if="item.badge" class="nav-badge" :aria-label="`непрочитанных: ${item.badge}`">{{ item.badge }}</span>
+        <span v-if="item.badge" class="nav-badge" :aria-label="t('app.unreadBadge', { n: item.badge })">{{ item.badge }}</span>
       </RouterLink>
     </nav>
 
     <div class="spacer" />
 
-    <nav class="nav" aria-label="Учётная запись">
+    <nav class="nav" :aria-label="t('app.account')">
       <RouterLink
         to="/settings"
         class="nav-link"
@@ -97,19 +98,19 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         :aria-current="route.path === '/settings' ? 'page' : undefined"
       >
         <Icon name="settings" :size="18" />
-        <span>Настройки</span>
+        <span>{{ t('app.nav.settings') }}</span>
       </RouterLink>
     </nav>
 
     <div class="footer">
       <ConnectionStatus />
-      <div class="user" :title="`Вход в этой вкладке: ${session.user?.login}`">
+      <div class="user" :title="t('app.signedInAs', { login: session.user?.login })">
         <span class="avatar" :class="session.user?.role" aria-hidden="true">{{ initials }}</span>
         <span class="who">
           <strong>{{ session.user?.display_name }}</strong>
           <small>{{ ROLE_LABELS[session.user?.role] }}</small>
         </span>
-        <button class="btn btn-ghost btn-sm logout" type="button" aria-label="Выйти" title="Выйти" @click="emit('logout')">
+        <button class="btn btn-ghost btn-sm logout" type="button" :aria-label="t('app.signOut')" :title="t('app.signOut')" @click="emit('logout')">
           <Icon name="logout" :size="18" />
         </button>
       </div>

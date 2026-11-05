@@ -6,12 +6,18 @@ import { useRoute, useRouter } from 'vue-router'
 
 import Icon from '../components/Icon.vue'
 import { api } from '../lib/api.js'
+import { t } from '../lib/i18n.js'
 import { setSession } from '../lib/session.js'
 
 // Демо-аккаунты и их публичный пароль (D-004) сообщает сервер, и только в демо-режиме
 // (D-059): вне его блок не показывается, а пароль не попадает в код страницы.
 const demo = ref(null)
-const ROLE_NAMES = { admin: 'администратор', organizer: 'организатор', employee: 'участник' }
+// Подписи ролей — computed: пересчитываются при смене языка (D-065).
+const ROLE_NAMES = computed(() => ({
+  admin: t('auth.login.role.admin'),
+  organizer: t('auth.login.role.organizer'),
+  employee: t('auth.login.role.employee'),
+}))
 const ROLE_ICONS = { admin: 'settings', organizer: 'flag', employee: 'user' }
 onMounted(async () => {
   try {
@@ -35,7 +41,7 @@ async function submit() {
   if (pending.value) return
   error.value = ''
   if (!login.value.trim() || !password.value) {
-    error.value = 'Введите логин и пароль'
+    error.value = t('auth.login.empty')
     return
   }
   pending.value = true
@@ -63,24 +69,21 @@ function useDemo(account) {
     <section class="hero">
       <div class="brand">
         <span class="logo"><Icon name="bulb" :size="26" /></span>
-        <span>Конкурс идей</span>
+        <span>{{ t('auth.brand') }}</span>
       </div>
-      <h1>Идеи сотрудников — от предложения до победителя</h1>
+      <h1>{{ t('auth.login.heroTitle') }}</h1>
       <ol class="steps">
         <li>
           <span class="n">1</span>
-          <div><strong>Приём идей.</strong> Участники предлагают идеи; чужие идеи до голосования не видны.</div>
+          <div><strong>{{ t('auth.login.step1Title') }}</strong> {{ t('auth.login.step1Text') }}</div>
         </li>
         <li>
           <span class="n">2</span>
-          <div>
-            <strong>Голосование.</strong> Анонимно, за любые чужие идеи — по одному голосу за каждую; голос можно
-            отозвать.
-          </div>
+          <div><strong>{{ t('auth.login.step2Title') }}</strong> {{ t('auth.login.step2Text') }}</div>
         </li>
         <li>
           <span class="n">3</span>
-          <div><strong>Итоги.</strong> Раскрываются авторы и победитель, всем участникам приходит письмо.</div>
+          <div><strong>{{ t('auth.login.step3Title') }}</strong> {{ t('auth.login.step3Text') }}</div>
         </li>
       </ol>
     </section>
@@ -88,20 +91,20 @@ function useDemo(account) {
     <section class="panel">
       <form class="card form stack" novalidate @submit.prevent="submit">
         <div>
-          <h2>Вход</h2>
-          <p class="muted hint">В каждой вкладке браузера — свой вход: можно открыть организатора и участника рядом.</p>
+          <h2>{{ t('auth.login.title') }}</h2>
+          <p class="muted hint">{{ t('auth.login.hint') }}</p>
         </div>
 
         <div v-if="expired" class="notice notice-warning" role="status">
-          <Icon name="clock" class="icon" /> Сессия завершена — войдите снова.
+          <Icon name="clock" class="icon" /> {{ t('auth.login.expired') }}
         </div>
 
         <div class="field">
-          <label for="login">Логин</label>
+          <label for="login">{{ t('auth.login.login') }}</label>
           <input id="login" v-model="login" class="input" autocomplete="username" autofocus :disabled="pending" />
         </div>
         <div class="field">
-          <label for="password">Пароль</label>
+          <label for="password">{{ t('auth.login.password') }}</label>
           <input
             id="password"
             v-model="password"
@@ -118,21 +121,21 @@ function useDemo(account) {
 
         <button class="btn btn-primary btn-lg btn-block" type="submit" :disabled="pending">
           <span v-if="pending" class="spinner" aria-hidden="true" />
-          Войти
+          {{ t('auth.login.submit') }}
         </button>
       </form>
 
       <div v-if="demo" class="card demo">
         <div class="row">
-          <h3>Демо-аккаунты</h3>
-          <span class="faint">пароль <code class="mono">{{ demo.password }}</code></span>
+          <h3>{{ t('auth.login.demoTitle') }}</h3>
+          <span class="faint">{{ t('auth.login.demoPassword') }} <code class="mono">{{ demo.password }}</code></span>
         </div>
         <ul class="accounts">
           <li v-for="account in demo.accounts" :key="account.login">
             <button
               class="account"
               type="button"
-              :title="`Войти как ${account.login}`"
+              :title="t('auth.login.signInAs', { login: account.login })"
               :disabled="pending"
               @click="useDemo(account)"
             >

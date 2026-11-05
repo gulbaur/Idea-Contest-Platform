@@ -1,10 +1,7 @@
 // Правила списка конкурсов (D-061): что показать в колонке «Участие», что «ждёт действия»,
 // поиск и порядок. Без интерфейса — проверяется тестами отдельно от страницы.
-import { countOf } from './format.js'
 import { phaseAt } from './clock.js'
-
-const IDEAS = ['идея', 'идеи', 'идей']
-const IDEAS_GEN = ['идею', 'идеи', 'идей']
+import { t, tn } from './i18n.js'
 
 /**
  * Состояние участия для строки списка.
@@ -17,29 +14,31 @@ export function participation(contest, phase, organizer) {
     if (phase === 'submission') {
       return {
         tone: 'muted',
-        text: countOf(stats.ideas_count ?? 0, IDEAS),
-        detail: `участников: ${stats.participants_count ?? 0}`,
+        text: tn('common.ideas', stats.ideas_count ?? 0),
+        detail: t('contests.state.participants', { n: stats.participants_count ?? 0 }),
       }
     }
     return {
       tone: 'muted',
-      text: `проголосовали ${stats.voters_count ?? 0} из ${stats.participants_count ?? 0}`,
-      detail: countOf(stats.ideas_count ?? 0, IDEAS),
+      text: t('contests.state.voted', { voted: stats.voters_count ?? 0, total: stats.participants_count ?? 0 }),
+      detail: tn('common.ideas', stats.ideas_count ?? 0),
     }
   }
 
   const my = contest.my ?? { ideas_count: 0, votes_count: 0, can_vote: false }
   if (phase === 'submission') {
     return my.ideas_count > 0
-      ? { tone: 'done', text: `Вы подали ${countOf(my.ideas_count, IDEAS_GEN)}` }
-      : { tone: 'action', text: 'Подайте идею' }
+      ? { tone: 'done', text: t('contests.state.submitted', { ideas: tn('common.ideasAcc', my.ideas_count) }) }
+      : { tone: 'action', text: t('contests.state.submitIdea') }
   }
   if (phase === 'voting') {
-    if (my.votes_count > 0) return { tone: 'done', text: `Вы проголосовали: ${countOf(my.votes_count, ['голос', 'голоса', 'голосов'])}` }
-    if (my.can_vote) return { tone: 'action', text: 'Нужно проголосовать' }
-    return { tone: 'muted', text: 'Чужих идей нет' }
+    if (my.votes_count > 0) {
+      return { tone: 'done', text: t('contests.state.votedMine', { votes: tn('common.votes', my.votes_count) }) }
+    }
+    if (my.can_vote) return { tone: 'action', text: t('contests.state.needVote') }
+    return { tone: 'muted', text: t('contests.state.noOtherIdeas') }
   }
-  return { tone: 'muted', text: 'Итоги подведены' }
+  return { tone: 'muted', text: t('contests.state.finished') }
 }
 
 /** Участнику нужно что-то сделать в этом конкурсе прямо сейчас. */
@@ -52,11 +51,8 @@ function keyMoment(contest, phase) {
   return Date.parse(phase === 'submission' ? contest.submission_deadline : contest.voting_deadline)
 }
 
-export const SORTS = [
-  { key: 'deadline', label: 'Ближайший срок' },
-  { key: 'newest', label: 'Сначала новые' },
-  { key: 'oldest', label: 'Сначала старые' },
-]
+// Только ключи: подписи — t(`contests.sort.${key}`) в шаблоне, чтобы менялись вместе с языком (D-065).
+export const SORTS = ['deadline', 'newest', 'oldest']
 
 /**
  * Конкурсы с фазой в нужном порядке.

@@ -3,6 +3,7 @@
 import { RouterLink } from 'vue-router'
 
 import { formatDateTime } from '../lib/format.js'
+import { t } from '../lib/i18n.js'
 import { kindOf } from '../lib/mail.js'
 
 defineProps({
@@ -17,15 +18,15 @@ defineProps({
     <h2 class="subject-big">{{ letter.subject }}</h2>
     <dl class="headers">
       <div>
-        <dt>Кому</dt>
+        <dt>{{ t('mail.letter.to') }}</dt>
         <dd>{{ letter.recipient.display_name }} &lt;{{ letter.to_address }}&gt;</dd>
       </div>
       <div>
-        <dt>Когда</dt>
+        <dt>{{ t('mail.letter.when') }}</dt>
         <dd>{{ formatDateTime(letter.created_at, now) }}</dd>
       </div>
       <div>
-        <dt>Конкурс</dt>
+        <dt>{{ t('mail.letter.contest') }}</dt>
         <dd>
           <RouterLink :to="{ name: 'contest', params: { id: letter.contest_id } }">{{ letter.contest_topic }}</RouterLink>
         </dd>

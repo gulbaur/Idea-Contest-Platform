@@ -9,6 +9,7 @@ import StaffDialog from '../components/StaffDialog.vue'
 import { useServerNow } from '../composables/useServerNow.js'
 import { api } from '../lib/api.js'
 import { ROLE_LABELS, formatDateTime } from '../lib/format.js'
+import { t } from '../lib/i18n.js'
 import { notify } from '../lib/notify.js'
 
 const now = useServerNow()
@@ -19,17 +20,15 @@ const query = ref('')
 const statusFilter = ref('all')
 const dialogFor = ref(undefined) // undefined — закрыт; null — приглашение; объект — сотрудник
 
-const STATUS = {
-  active: { label: 'Активен', tone: 'badge-success' },
-  invited: { label: 'Приглашён', tone: 'badge-primary' },
-  disabled: { label: 'Отключён', tone: 'badge-danger' },
-}
-const STATUS_FILTERS = [
-  { key: 'all', label: 'Все' },
-  { key: 'active', label: 'Активные' },
-  { key: 'invited', label: 'Приглашены' },
-  { key: 'disabled', label: 'Отключены' },
-]
+// Подписи — computed: пересчитываются при смене языка (D-065).
+const STATUS = computed(() => ({
+  active: { label: t('staff.status.active'), tone: 'badge-success' },
+  invited: { label: t('staff.status.invited'), tone: 'badge-primary' },
+  disabled: { label: t('staff.status.disabled'), tone: 'badge-danger' },
+}))
+const STATUS_FILTERS = computed(() =>
+  ['all', 'active', 'invited', 'disabled'].map((key) => ({ key, label: t(`staff.filter.${key}`) })),
+)
 
 async function load() {
   try {
@@ -69,16 +68,18 @@ const initials = (name) =>
     .toUpperCase()
 
 // --- журнал действий ---------------------------------------------------------------
-const ACTIONS = {
-  user_invited: 'Приглашение',
-  user_updated: 'Изменение данных',
-  user_disabled: 'Доступ отключён',
-  user_enabled: 'Доступ включён',
-  password_reset: 'Сброс пароля',
-  invite_reissued: 'Новая ссылка для входа',
-  password_set: 'Пароль задан по ссылке',
-  password_changed: 'Пароль изменён',
-}
+// Подпись действия; неизвестное действие показывается как есть. Поле details — данные сервера, не переводится.
+const ACTION_KEYS = [
+  'user_invited',
+  'user_updated',
+  'user_disabled',
+  'user_enabled',
+  'password_reset',
+  'invite_reissued',
+  'password_set',
+  'password_changed',
+]
+const ACTIONS = computed(() => Object.fromEntries(ACTION_KEYS.map((key) => [key, t(`staff.action.${key}`)])))
 const events = ref(null)
 const hasMore = ref(false)
 const AUDIT_PAGE = 50
@@ -109,35 +110,35 @@ function changed() {
   <div class="container page">
     <header class="page-header">
       <div>
-        <h1>Сотрудники</h1>
-        <p class="subtitle">Учётные записи и доступ. Открытой регистрации нет — сотрудников приглашает администратор.</p>
+        <h1>{{ t('staff.title') }}</h1>
+        <p class="subtitle">{{ t('staff.subtitle') }}</p>
       </div>
-      <button class="btn btn-primary" type="button" @click="dialogFor = null"><Icon name="plus" /> Пригласить сотрудника</button>
+      <button class="btn btn-primary" type="button" @click="dialogFor = null"><Icon name="plus" /> {{ t('staff.invite') }}</button>
     </header>
 
-    <div class="segmented tabs" role="tablist" aria-label="Раздел">
+    <div class="segmented tabs" role="tablist" :aria-label="t('staff.sectionLabel')">
       <button type="button" role="tab" :aria-selected="tab === 'people'" :class="{ active: tab === 'people' }" @click="openTab('people')">
-        <Icon name="users" :size="16" /> Сотрудники
+        <Icon name="users" :size="16" /> {{ t('staff.tabPeople') }}
       </button>
       <button type="button" role="tab" :aria-selected="tab === 'audit'" :class="{ active: tab === 'audit' }" @click="openTab('audit')">
-        <Icon name="list" :size="16" /> Журнал действий
+        <Icon name="list" :size="16" /> {{ t('staff.tabAudit') }}
       </button>
     </div>
 
     <template v-if="tab === 'people'">
-      <EmptyState v-if="error" tone="error" icon="alert" title="Не удалось загрузить сотрудников" :text="error.message">
-        <button class="btn" type="button" @click="load"><Icon name="refresh" /> Повторить</button>
+      <EmptyState v-if="error" tone="error" icon="alert" :title="t('staff.loadFailed')" :text="error.message">
+        <button class="btn" type="button" @click="load"><Icon name="refresh" /> {{ t('common.retry') }}</button>
       </EmptyState>
       <div v-else-if="!people" class="card list"><div v-for="n in 4" :key="n" class="skeleton loading-row" /></div>
 
       <template v-else>
         <div class="toolbar">
           <label class="search">
-            <span class="sr-only">Поиск сотрудника</span>
+            <span class="sr-only">{{ t('staff.searchLabel') }}</span>
             <Icon name="search" :size="16" class="icon" />
-            <input v-model="query" class="input" type="search" placeholder="Имя, логин или почта" />
+            <input v-model="query" class="input" type="search" :placeholder="t('staff.searchPlaceholder')" />
           </label>
-          <div class="segmented" role="tablist" aria-label="Статус">
+          <div class="segmented" role="tablist" :aria-label="t('staff.statusLabel')">
             <button
               v-for="item in STATUS_FILTERS"
               :key="item.key"
@@ -154,7 +155,8 @@ function changed() {
 
         <div v-if="visible.length" class="card list">
           <div class="columns" aria-hidden="true">
-            <span>Сотрудник</span><span>Логин</span><span>Роль</span><span>Статус</span><span>Последний вход</span><span />
+            <span>{{ t('staff.columns.person') }}</span><span>{{ t('staff.columns.login') }}</span><span>{{ t('staff.columns.role') }}</span>
+            <span>{{ t('staff.columns.status') }}</span><span>{{ t('staff.columns.lastLogin') }}</span><span />
           </div>
           <div v-for="person in visible" :key="person.id" class="person-row" :data-login="person.login">
             <span class="who">
@@ -168,18 +170,18 @@ function changed() {
             <span class="role">{{ ROLE_LABELS[person.role] }}</span>
             <span class="status"><span class="badge" :class="STATUS[person.status].tone">{{ STATUS[person.status].label }}</span></span>
             <span class="faint last">{{ person.last_login_at ? formatDateTime(person.last_login_at, now) : '—' }}</span>
-            <button class="btn btn-sm" type="button" :aria-label="`Управлять: ${person.display_name}`" @click="dialogFor = person">
-              Управлять
+            <button class="btn btn-sm" type="button" :aria-label="t('staff.manageLabel', { name: person.display_name })" @click="dialogFor = person">
+              {{ t('staff.manage') }}
             </button>
           </div>
         </div>
-        <EmptyState v-else icon="search" title="Никого не найдено" text="Измените поиск или фильтр." />
+        <EmptyState v-else icon="search" :title="t('staff.notFound')" :text="t('staff.notFoundText')" />
       </template>
     </template>
 
     <template v-else>
       <div v-if="!events" class="card list"><div v-for="n in 4" :key="n" class="skeleton loading-row" /></div>
-      <EmptyState v-else-if="!events.length" icon="list" title="Действий пока нет" />
+      <EmptyState v-else-if="!events.length" icon="list" :title="t('staff.noEvents')" />
       <div v-else class="card list">
         <div v-for="event in events" :key="event.id" class="event-row">
           <span class="faint when">{{ formatDateTime(event.created_at, now) }}</span>
@@ -190,7 +192,7 @@ function changed() {
           </span>
           <span class="faint actor">{{ event.actor }}</span>
         </div>
-        <button v-if="hasMore" class="btn btn-ghost btn-sm more" type="button" @click="loadAudit(true)">Показать ещё</button>
+        <button v-if="hasMore" class="btn btn-ghost btn-sm more" type="button" @click="loadAudit(true)">{{ t('common.showMore') }}</button>
       </div>
     </template>
 

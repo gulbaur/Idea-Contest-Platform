@@ -9,6 +9,7 @@ import ConfirmHost from './components/ConfirmHost.vue'
 import ToastHost from './components/ToastHost.vue'
 import { api, onUnauthorized } from './lib/api.js'
 import { realtime } from './lib/connection.js'
+import { t } from './lib/i18n.js'
 import { notify } from './lib/notify.js'
 import { clearSession, session, updateUser } from './lib/session.js'
 
@@ -37,7 +38,7 @@ async function logout() {
     // Даже если сервер недоступен, вкладка выходит: токен удаляется из sessionStorage.
   }
   toLogin(false)
-  notify.info('Вы вышли. Другие вкладки остаются в своих учётных записях.')
+  notify.info(t('app.signedOut'))
 }
 
 // Соединение живёт, пока в вкладке есть вход.

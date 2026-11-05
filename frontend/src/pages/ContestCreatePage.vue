@@ -9,7 +9,8 @@ import Icon from '../components/Icon.vue'
 import { api } from '../lib/api.js'
 import { serverNow, syncServerTime } from '../lib/clock.js'
 import { confirmAction } from '../lib/confirm.js'
-import { formatDateTime, localInputToIso, plural, timezoneLabel, toLocalInput } from '../lib/format.js'
+import { formatDateTime, localInputToIso, timezoneLabel, toLocalInput } from '../lib/format.js'
+import { t, tn } from '../lib/i18n.js'
 import { notify } from '../lib/notify.js'
 import { newRequestId } from '../lib/requestId.js'
 
@@ -32,11 +33,12 @@ const serverError = ref('')
 // Один идентификатор на эту форму: повтор после сбоя сети не создаст второй конкурс (D-031).
 let requestId = newRequestId()
 
+// Подпись — t(`contests.create.preset.${key}`) в шаблоне: меняется вместе с языком (D-065).
 const PRESETS = [
-  { label: 'Демо: 3 + 3 мин', submission: 3 * MINUTE, voting: 6 * MINUTE },
-  { label: 'Демо: 10 + 10 мин', submission: 10 * MINUTE, voting: 20 * MINUTE },
-  { label: '2 дня + 2 дня', submission: 2 * DAY, voting: 4 * DAY },
-  { label: 'Неделя + 3 дня', submission: 7 * DAY, voting: 10 * DAY },
+  { key: 'demo3', submission: 3 * MINUTE, voting: 6 * MINUTE },
+  { key: 'demo10', submission: 10 * MINUTE, voting: 20 * MINUTE },
+  { key: 'days2', submission: 2 * DAY, voting: 4 * DAY },
+  { key: 'week', submission: 7 * DAY, voting: 10 * DAY },
 ]
 
 function applyPreset(preset) {
@@ -100,26 +102,26 @@ const votingIso = computed(() => localInputToIso(votingInput.value))
 const errors = computed(() => {
   const result = {}
   const value = topic.value.trim()
-  if (!value) result.topic = 'Укажите тему конкурса'
-  else if (value.length > TOPIC_MAX) result.topic = `Не больше ${TOPIC_MAX} символов`
-  if (!submissionIso.value) result.submission = 'Укажите дату и время'
-  else if (Date.parse(submissionIso.value) <= serverNow()) result.submission = 'Срок должен быть в будущем'
-  if (!votingIso.value) result.voting = 'Укажите дату и время'
+  if (!value) result.topic = t('contests.create.error.topic')
+  else if (value.length > TOPIC_MAX) result.topic = t('contests.create.error.topicTooLong', { max: TOPIC_MAX })
+  if (!submissionIso.value) result.submission = t('contests.create.error.dateRequired')
+  else if (Date.parse(submissionIso.value) <= serverNow()) result.submission = t('contests.create.error.submissionPast')
+  if (!votingIso.value) result.voting = t('contests.create.error.dateRequired')
   else if (submissionIso.value && Date.parse(votingIso.value) <= Date.parse(submissionIso.value)) {
-    result.voting = 'Голосование должно закончиться позже приёма идей'
+    result.voting = t('contests.create.error.votingOrder')
   }
-  if (!selected.value.size) result.participants = 'Выберите хотя бы одного участника'
+  if (!selected.value.size) result.participants = t('contests.create.error.participants')
   return result
 })
 
 function durationText(ms) {
   if (ms <= 0) return '—'
   const minutes = Math.round(ms / MINUTE)
-  if (minutes < 60) return `${minutes} ${plural(minutes, ['минута', 'минуты', 'минут'])}`
+  if (minutes < 60) return tn('contests.create.minutes', minutes)
   const hours = Math.round(ms / HOUR)
-  if (hours < 48) return `${hours} ${plural(hours, ['час', 'часа', 'часов'])}`
+  if (hours < 48) return tn('contests.create.hours', hours)
   const days = Math.round(ms / DAY)
-  return `${days} ${plural(days, ['день', 'дня', 'дней'])}`
+  return tn('contests.create.days', days)
 }
 
 const summary = computed(() => {
@@ -138,14 +140,14 @@ async function submit() {
   if (Object.keys(errors.value).length || pending.value) return
 
   const confirmed = await confirmAction({
-    title: 'Создать конкурс?',
-    message:
-      `«${topic.value.trim()}»\n` +
-      `Приём идей — до ${formatDateTime(submissionIso.value)}\n` +
-      `Голосование — до ${formatDateTime(votingIso.value)}\n` +
-      `Участников: ${selected.value.size}\n\n` +
-      'Сроки и список участников после создания изменить нельзя.',
-    confirmText: 'Создать',
+    title: t('contests.create.confirm.title'),
+    message: t('contests.create.confirm.message', {
+      topic: topic.value.trim(),
+      submission: formatDateTime(submissionIso.value),
+      voting: formatDateTime(votingIso.value),
+      count: selected.value.size,
+    }),
+    confirmText: t('contests.create.confirm.confirmText'),
   })
   if (!confirmed) return
 
@@ -158,16 +160,14 @@ async function submit() {
       participant_ids: [...selected.value],
       client_request_id: requestId,
     })
-    notify.success('Конкурс создан — участники уже видят его в своём списке.')
+    notify.success(t('contests.create.created'))
     await router.push({ name: 'contest', params: { id: contest.id } })
   } catch (failure) {
     if (failure.detail?.code === 'request_id_reused') {
       // Первая отправка формы уже создала конкурс (ответ потерялся), а данные с тех пор
       // изменились. Новый идентификатор: следующее нажатие создаст конкурс с новыми данными (D-053).
       requestId = newRequestId()
-      serverError.value =
-        'Конкурс по первой отправке этой формы уже создан — он есть в списке конкурсов. ' +
-        'Нажмите «Создать конкурс» ещё раз, чтобы создать ещё один с новыми данными.'
+      serverError.value = t('contests.create.error.requestReused')
     } else {
       serverError.value = failure.message
     }
@@ -179,11 +179,11 @@ async function submit() {
 
 <template>
   <div class="container page narrow">
-    <RouterLink class="back" :to="{ name: 'contests' }"><Icon name="arrow-left" /> Все конкурсы</RouterLink>
+    <RouterLink class="back" :to="{ name: 'contests' }"><Icon name="arrow-left" /> {{ t('contests.create.back') }}</RouterLink>
     <header class="page-header">
       <div>
-        <h1>Новый конкурс</h1>
-        <p class="subtitle">Тема, два срока и участники. Раунды переключатся сами в назначенное время.</p>
+        <h1>{{ t('contests.create.title') }}</h1>
+        <p class="subtitle">{{ t('contests.create.subtitle') }}</p>
       </div>
     </header>
 
@@ -191,7 +191,7 @@ async function submit() {
       <section class="card stack">
         <div class="field">
           <div class="row">
-            <label for="topic">Тема конкурса</label>
+            <label for="topic">{{ t('contests.create.topic') }}</label>
             <span class="counter" :class="{ over: topic.trim().length > TOPIC_MAX }">
               {{ topic.trim().length }}/{{ TOPIC_MAX }}
             </span>
@@ -201,7 +201,7 @@ async function submit() {
             v-model="topic"
             class="input"
             maxlength="400"
-            placeholder="Например: как сделать офис удобнее"
+            :placeholder="t('contests.create.topicPlaceholder')"
             :aria-invalid="touched && !!errors.topic"
             :disabled="pending"
           />
@@ -212,26 +212,26 @@ async function submit() {
       <section class="card stack">
         <div class="card-title">
           <Icon name="calendar" />
-          <h2>Сроки</h2>
-          <span class="faint">время вашего компьютера, {{ timezoneLabel() }}</span>
+          <h2>{{ t('contests.create.deadlines') }}</h2>
+          <span class="faint">{{ t('contests.create.timezone', { zone: timezoneLabel() }) }}</span>
         </div>
 
-        <div class="presets" role="group" aria-label="Быстрый выбор сроков">
+        <div class="presets" role="group" :aria-label="t('contests.create.presets')">
           <button
             v-for="preset in PRESETS"
-            :key="preset.label"
+            :key="preset.key"
             class="btn btn-sm"
             type="button"
             :disabled="pending"
             @click="applyPreset(preset)"
           >
-            {{ preset.label }}
+            {{ t(`contests.create.preset.${preset.key}`) }}
           </button>
         </div>
 
         <div class="dates">
           <div class="field">
-            <label for="submission">Приём идей — до</label>
+            <label for="submission">{{ t('contests.create.submissionUntil') }}</label>
             <input
               id="submission"
               v-model="submissionInput"
@@ -241,10 +241,10 @@ async function submit() {
               :disabled="pending"
             />
             <span v-if="touched && errors.submission" class="field-error">{{ errors.submission }}</span>
-            <span v-else-if="summary" class="hint">длится {{ summary.submission }}, начинается сразу</span>
+            <span v-else-if="summary" class="hint">{{ t('contests.create.submissionLasts', { duration: summary.submission }) }}</span>
           </div>
           <div class="field">
-            <label for="voting">Голосование — до</label>
+            <label for="voting">{{ t('contests.create.votingUntil') }}</label>
             <input
               id="voting"
               v-model="votingInput"
@@ -254,17 +254,16 @@ async function submit() {
               :disabled="pending"
             />
             <span v-if="touched && errors.voting" class="field-error">{{ errors.voting }}</span>
-            <span v-else-if="summary" class="hint">длится {{ summary.voting }}, затем итоги и письма</span>
+            <span v-else-if="summary" class="hint">{{ t('contests.create.votingLasts', { duration: summary.voting }) }}</span>
           </div>
         </div>
 
         <div class="notice">
           <Icon name="bell" class="icon" />
           <span>
-            За сутки до конца каждого раунда тем, кто ещё не участвовал, придёт напоминание. Если раунд короче
-            суток, напоминания в нём не будет.
-            <template v-if="summary?.shortRound"> Короткие сроки — для демонстрации: запустите сервис с небольшим
-              <code class="mono">REMINDER_LEAD</code> (см. README).</template>
+            {{ t('contests.create.reminder') }}
+            <template v-if="summary?.shortRound"> {{ t('contests.create.shortRound') }}
+              <code class="mono">REMINDER_LEAD</code> {{ t('contests.create.shortRoundAfter') }}</template>
           </span>
         </div>
       </section>
@@ -272,21 +271,25 @@ async function submit() {
       <section class="card">
         <div class="card-title">
           <Icon name="users" />
-          <h2>Участники</h2>
-          <span v-if="employees" class="faint">выбрано {{ selected.size }} из {{ employees.length }}</span>
+          <h2>{{ t('contests.create.participants') }}</h2>
+          <span v-if="employees" class="faint">{{ t('contests.create.selected', { selected: selected.size, total: employees.length }) }}</span>
           <span class="spacer" />
           <button v-if="employees?.length" class="btn btn-ghost btn-sm" type="button" @click="toggleAll">
-            {{ peopleQuery.trim() ? (allSelected ? 'Снять найденных' : 'Выбрать найденных') : allSelected ? 'Снять все' : 'Выбрать всех' }}
+            {{
+              peopleQuery.trim()
+                ? t(allSelected ? 'contests.create.unselectFound' : 'contests.create.selectFound')
+                : t(allSelected ? 'contests.create.unselectAll' : 'contests.create.selectAll')
+            }}
           </button>
         </div>
         <label v-if="employees?.length" class="search people-search">
-          <span class="sr-only">Поиск сотрудника</span>
+          <span class="sr-only">{{ t('contests.create.searchEmployee') }}</span>
           <Icon name="search" :size="16" class="icon" />
-          <input v-model="peopleQuery" class="input" type="search" placeholder="Найти по имени или логину" />
+          <input v-model="peopleQuery" class="input" type="search" :placeholder="t('contests.create.searchEmployeePlaceholder')" />
         </label>
 
-        <EmptyState v-if="employeesError" tone="error" icon="alert" title="Не удалось загрузить сотрудников" :text="employeesError.message">
-          <button class="btn" type="button" @click="loadEmployees"><Icon name="refresh" /> Повторить</button>
+        <EmptyState v-if="employeesError" tone="error" icon="alert" :title="t('contests.create.employeesError')" :text="employeesError.message">
+          <button class="btn" type="button" @click="loadEmployees"><Icon name="refresh" /> {{ t('common.retry') }}</button>
         </EmptyState>
         <div v-else-if="!employees" class="people">
           <div v-for="n in 4" :key="n" class="skeleton" style="height: 44px" />
@@ -301,7 +304,7 @@ async function submit() {
           </label>
         </div>
         <p v-if="touched && errors.participants" class="field-error top-gap">{{ errors.participants }}</p>
-        <p class="faint top-gap">Только участники подают идеи, голосуют и получают письма. Организатор не участвует.</p>
+        <p class="faint top-gap">{{ t('contests.create.participantsNote') }}</p>
       </section>
 
       <div v-if="serverError" class="notice notice-danger" role="alert">
@@ -309,11 +312,11 @@ async function submit() {
       </div>
 
       <div class="row submit-row">
-        <RouterLink class="btn btn-ghost" :to="{ name: 'contests' }">Отмена</RouterLink>
+        <RouterLink class="btn btn-ghost" :to="{ name: 'contests' }">{{ t('common.cancel') }}</RouterLink>
         <button class="btn btn-primary btn-lg" type="submit" :disabled="pending || !employees">
           <span v-if="pending" class="spinner" aria-hidden="true" />
           <Icon v-else name="check" />
-          Создать конкурс
+          {{ t('contests.create.submit') }}
         </button>
       </div>
     </form>

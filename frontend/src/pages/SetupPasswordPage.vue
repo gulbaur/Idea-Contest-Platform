@@ -7,6 +7,7 @@ import { RouterLink, useRouter } from 'vue-router'
 
 import Icon from '../components/Icon.vue'
 import { api } from '../lib/api.js'
+import { t } from '../lib/i18n.js'
 import { setSession } from '../lib/session.js'
 
 const MIN_LENGTH = 10
@@ -38,11 +39,11 @@ async function submit() {
   if (pending.value) return
   error.value = ''
   if (password.value.length < MIN_LENGTH) {
-    error.value = `Пароль должен быть не короче ${MIN_LENGTH} символов`
+    error.value = t('auth.setup.tooShort', { min: MIN_LENGTH })
     return
   }
   if (password.value !== repeat.value) {
-    error.value = 'Пароли не совпадают'
+    error.value = t('auth.setup.mismatch')
     return
   }
   pending.value = true
@@ -63,37 +64,34 @@ async function submit() {
   <div class="setup-page">
     <div class="brand">
       <span class="logo"><Icon name="bulb" :size="18" /></span>
-      <span>Конкурс идей</span>
+      <span>{{ t('auth.brand') }}</span>
     </div>
 
     <div v-if="invalid" class="card panel stack">
-      <h1>Ссылка недействительна</h1>
-      <p class="muted">
-        Ссылка уже использована, устарела (она действует 72 часа) или скопирована не полностью. Попросите администратора
-        выдать новую.
-      </p>
-      <RouterLink class="btn" to="/login"><Icon name="arrow-left" /> Ко входу</RouterLink>
+      <h1>{{ t('auth.setup.invalidTitle') }}</h1>
+      <p class="muted">{{ t('auth.setup.invalidText') }}</p>
+      <RouterLink class="btn" to="/login"><Icon name="arrow-left" /> {{ t('auth.setup.toLogin') }}</RouterLink>
     </div>
 
     <div v-else-if="!person" class="card panel"><div class="skeleton" style="height: 180px" /></div>
 
     <form v-else class="card panel stack" novalidate @submit.prevent="submit">
       <div>
-        <h1>Здравствуйте, {{ person.display_name }}!</h1>
-        <p class="muted">Придумайте пароль для входа. Ваш логин — <code class="mono">{{ person.login }}</code>.</p>
+        <h1>{{ t('auth.setup.hello', { name: person.display_name }) }}</h1>
+        <p class="muted">{{ t('auth.setup.intro') }} <code class="mono">{{ person.login }}</code>.</p>
       </div>
       <div class="field">
-        <label for="new-password">Пароль</label>
+        <label for="new-password">{{ t('auth.setup.password') }}</label>
         <input id="new-password" v-model="password" class="input" type="password" autocomplete="new-password" />
-        <span class="hint">Не короче {{ MIN_LENGTH }} символов и не совпадает с логином. Удобно взять фразу из нескольких слов.</span>
+        <span class="hint">{{ t('auth.setup.passwordHint', { min: MIN_LENGTH }) }}</span>
       </div>
       <div class="field">
-        <label for="repeat-password">Пароль ещё раз</label>
+        <label for="repeat-password">{{ t('auth.setup.repeat') }}</label>
         <input id="repeat-password" v-model="repeat" class="input" type="password" autocomplete="new-password" />
       </div>
       <div v-if="error" class="notice notice-danger" role="alert"><Icon name="alert" class="icon" /> {{ error }}</div>
       <button class="btn btn-primary btn-lg btn-block" type="submit" :disabled="pending">
-        <span v-if="pending" class="spinner" aria-hidden="true" /> Задать пароль и войти
+        <span v-if="pending" class="spinner" aria-hidden="true" /> {{ t('auth.setup.submit') }}
       </button>
     </form>
   </div>

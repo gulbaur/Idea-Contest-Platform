@@ -1,6 +1,6 @@
 // Запросы к backend (D-049). Все адреса — относительные (/api/...): nginx передаёт их
 // backend, поэтому браузер работает с одним адресом и CORS не нужен (D-048).
-import { locale } from './i18n.js'
+import { locale, t } from './i18n.js'
 import { session } from './session.js'
 
 export class ApiError extends Error {
@@ -24,37 +24,42 @@ export function onUnauthorized(handler) {
   unauthorizedHandler = handler
 }
 
-const FIELD_LABELS = {
-  login: 'Логин',
-  password: 'Пароль',
-  topic: 'Тема',
-  title: 'Название',
-  description: 'Описание',
-  submission_deadline: 'Срок приёма идей',
-  voting_deadline: 'Срок голосования',
-  participant_ids: 'Участники',
-  display_name: 'Имя',
-  email: 'Почта',
-  role: 'Роль',
-}
+// Названия полей и тексты ошибок — на языке интерфейса (D-065); переводятся при каждом вызове.
+const FIELDS = [
+  'login',
+  'password',
+  'topic',
+  'title',
+  'description',
+  'submission_deadline',
+  'voting_deadline',
+  'participant_ids',
+  'display_name',
+  'email',
+  'role',
+]
 
 function validationMessage(errors) {
   // Ответ 422 от Pydantic — список ошибок по полям. Показываем первую понятным текстом.
   const first = errors[0] ?? {}
-  const field = FIELD_LABELS[first.loc?.at(-1)] ?? 'Данные'
+  const name = first.loc?.at(-1)
+  const field = FIELDS.includes(name) ? t(`app.api.field.${name}`) :t('app.api.fieldFallback')
   switch (first.type) {
     case 'string_too_short':
-      return `${field}: поле не может быть пустым.`
+      return t('app.api.empty', { field })
     case 'string_too_long':
-      return `${field}: не больше ${first.ctx?.max_length} символов.`
+      return t('app.api.tooLong', { field, max: first.ctx?.max_length })
     case 'too_short':
-      return `${field}: выберите хотя бы одного.`
+      return t('app.api.tooFew', { field })
     case 'timezone_aware':
     case 'datetime_from_date_parsing':
     case 'datetime_parsing':
-      return `${field}: укажите дату и время.`
+      return t('app.api.dateTime', { field })
     default:
-      return `${field}: ${String(first.msg ?? 'неверное значение').replace(/^Value error, /, '')}.`
+      return t('app.api.other', {
+        field,
+        message: String(first.msg ?? t('app.api.invalidValue')).replace(/^Value error, /, ''),
+      })
   }
 }
 
@@ -63,8 +68,8 @@ export function messageFor(status, data) {
   if (typeof detail === 'string') return detail
   if (Array.isArray(detail)) return validationMessage(detail)
   if (detail && typeof detail === 'object' && detail.message) return detail.message
-  if (status >= 500) return 'Ошибка на сервере. Попробуйте ещё раз чуть позже.'
-  return `Запрос не выполнен (код ${status}).`
+  if (status >= 500) return t('app.api.serverError')
+  return t('app.api.failed', { status })
 }
 
 export async function request(method, path, { body, query } = {}) {
@@ -89,7 +94,7 @@ export async function request(method, path, { body, query } = {}) {
       body: body === undefined ? undefined : JSON.stringify(body),
     })
   } catch {
-    throw new ApiError(0, 'Нет связи с сервером. Проверьте подключение и попробуйте ещё раз.')
+    throw new ApiError(0, t('app.api.offline'))
   }
 
   const text = response.status === 204 ? '' : await response.text()

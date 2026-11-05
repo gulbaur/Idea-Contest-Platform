@@ -8,14 +8,17 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api import admin, auth, contests, emails, health, ideas, realtime, votes
 from app.clock import Clock, SystemClock
 from app.config import Settings
 from app.db import create_engine, create_sessionmaker
 from app.jobs import JobRunner
+from app.i18n import translate, wants_english
 from app.realtime import DeadlineTicker, Hub
 
 
@@ -27,10 +30,28 @@ async def _validation_error(request: Request, exc: RequestValidationError) -> JS
     не возвращается, например, присланный пароль.
     """
     errors = [{k: v for k, v in error.items() if k != "input"} for error in exc.errors()]
+    if wants_english(request.headers.get("accept-language")):
+        # Сообщения наших проверок («Value error, …») — на языке интерфейса (D-065).
+        for error in errors:
+            message = str(error.get("msg", ""))
+            if message.startswith("Value error, "):
+                error["msg"] = "Value error, " + translate(message.removeprefix("Value error, "))
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content={"detail": jsonable_encoder(errors)},
     )
+
+
+async def _http_error(request: Request, exc: StarletteHTTPException):
+    """Как стандартный ответ FastAPI, но текст ошибки — на языке интерфейса (D-065)."""
+    if wants_english(request.headers.get("accept-language")):
+        detail = exc.detail
+        if isinstance(detail, str):
+            detail = translate(detail)
+        elif isinstance(detail, dict) and isinstance(detail.get("message"), str):
+            detail = {**detail, "message": translate(detail["message"])}
+        exc = StarletteHTTPException(status_code=exc.status_code, detail=detail, headers=exc.headers)
+    return await http_exception_handler(request, exc)
 
 
 def create_app(settings: Settings | None = None, clock: Clock | None = None) -> FastAPI:
@@ -60,6 +81,7 @@ def create_app(settings: Settings | None = None, clock: Clock | None = None) -> 
         app.state.sessionmaker, app.state.clock, app.state.hub, settings.jobs_max_sleep_seconds
     )
     app.add_exception_handler(RequestValidationError, _validation_error)
+    app.add_exception_handler(StarletteHTTPException, _http_error)
 
     app.include_router(health.router)
     app.include_router(auth.router)

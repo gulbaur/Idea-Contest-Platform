@@ -3,6 +3,7 @@
 // название 1–200 символов, описание 1–5000, пробелы по краям не считаются.
 import { computed, ref, watch } from 'vue'
 
+import { t } from '../lib/i18n.js'
 import Icon from './Icon.vue'
 
 const TITLE_MAX = 200
@@ -11,7 +12,7 @@ const DESCRIPTION_MAX = 5000
 const props = defineProps({
   initialTitle: { type: String, default: '' },
   initialDescription: { type: String, default: '' },
-  submitLabel: { type: String, default: 'Отправить' },
+  submitLabel: { type: String, default: '' }, // пусто — «Отправить» на языке интерфейса
   pending: { type: Boolean, default: false },
   cancelable: { type: Boolean, default: false },
   idPrefix: { type: String, default: 'idea' },
@@ -33,14 +34,14 @@ watch(
 
 const titleError = computed(() => {
   const value = title.value.trim()
-  if (!value) return 'Введите название идеи'
-  if (value.length > TITLE_MAX) return `Не больше ${TITLE_MAX} символов`
+  if (!value) return t('contest.form.titleEmpty')
+  if (value.length > TITLE_MAX) return t('contest.form.tooLong', { max: TITLE_MAX })
   return ''
 })
 const descriptionError = computed(() => {
   const value = description.value.trim()
-  if (!value) return 'Опишите идею'
-  if (value.length > DESCRIPTION_MAX) return `Не больше ${DESCRIPTION_MAX} символов`
+  if (!value) return t('contest.form.descriptionEmpty')
+  if (value.length > DESCRIPTION_MAX) return t('contest.form.tooLong', { max: DESCRIPTION_MAX })
   return ''
 })
 
@@ -63,7 +64,7 @@ defineExpose({ reset })
   <form class="idea-form stack" novalidate @submit.prevent="submit">
     <div class="field">
       <div class="row">
-        <label :for="`${idPrefix}-title`">Название</label>
+        <label :for="`${idPrefix}-title`">{{ t('contest.form.title') }}</label>
         <span class="counter" :class="{ over: title.trim().length > TITLE_MAX }">
           {{ title.trim().length }}/{{ TITLE_MAX }}
         </span>
@@ -74,7 +75,7 @@ defineExpose({ reset })
         class="input"
         type="text"
         maxlength="400"
-        placeholder="Коротко: в чём идея?"
+        :placeholder="t('contest.form.titlePlaceholder')"
         :aria-invalid="touched && !!titleError"
         :disabled="pending"
       />
@@ -83,7 +84,7 @@ defineExpose({ reset })
 
     <div class="field">
       <div class="row">
-        <label :for="`${idPrefix}-description`">Описание</label>
+        <label :for="`${idPrefix}-description`">{{ t('contest.form.description') }}</label>
         <span class="counter" :class="{ over: description.trim().length > DESCRIPTION_MAX }">
           {{ description.trim().length }}/{{ DESCRIPTION_MAX }}
         </span>
@@ -93,7 +94,7 @@ defineExpose({ reset })
         v-model="description"
         class="textarea"
         rows="4"
-        placeholder="Что предлагаете, зачем это нужно и как это сделать"
+        :placeholder="t('contest.form.descriptionPlaceholder')"
         :aria-invalid="touched && !!descriptionError"
         :disabled="pending"
       />
@@ -104,10 +105,10 @@ defineExpose({ reset })
       <button class="btn btn-primary" type="submit" :disabled="pending">
         <span v-if="pending" class="spinner" aria-hidden="true" />
         <Icon v-else name="send" />
-        {{ submitLabel }}
+        {{ submitLabel || t('contest.form.submit') }}
       </button>
       <button v-if="cancelable" class="btn btn-ghost" type="button" :disabled="pending" @click="emit('cancel')">
-        Отмена
+        {{ t('common.cancel') }}
       </button>
     </div>
   </form>

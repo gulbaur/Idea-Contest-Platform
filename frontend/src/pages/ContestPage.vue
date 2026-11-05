@@ -19,7 +19,8 @@ import { useContest } from '../composables/useContest.js'
 import { useServerNow } from '../composables/useServerNow.js'
 import { api } from '../lib/api.js'
 import { confirmAction } from '../lib/confirm.js'
-import { countOf, formatDateTime } from '../lib/format.js'
+import { formatDateTime } from '../lib/format.js'
+import { t, tn } from '../lib/i18n.js'
 import { notify } from '../lib/notify.js'
 import { newRequestId } from '../lib/requestId.js'
 import { isOrganizer } from '../lib/session.js'
@@ -39,7 +40,7 @@ const myVotes = computed(() => ideas.value.filter((idea) => idea.voted_by_me).le
 const winner = computed(() => ideas.value.find((idea) => idea.id === snapshot.value?.winner_idea_id) ?? null)
 
 watch(contest, (value) => {
-  if (value) document.title = `${value.topic} — Конкурс идей`
+  if (value) document.title = t('contest.documentTitle', { topic: value.topic })
 })
 
 // --- действия участника -------------------------------------------------------
@@ -74,17 +75,14 @@ async function submitIdea(payload) {
     await api.submitIdea(contest.value.id, { ...payload, client_request_id: submitRequestId })
     submitRequestId = newRequestId()
     ideaForm.value?.reset()
-    notify.success('Идея отправлена. До начала голосования её видите только вы.')
+    notify.success(t('contest.submission.submitted'))
     reload()
   } catch (failure) {
     if (failure.detail?.code === 'request_id_reused') {
       // Первая отправка формы уже принята (ответ потерялся), а текст с тех пор изменился.
       // Новый идентификатор: следующее нажатие подаст новый текст отдельной идеей (D-053).
       submitRequestId = newRequestId()
-      notify.error(
-        'Предыдущая отправка этой формы уже принята — идея есть в «Моих идеях». ' +
-          'Новый текст не отправлен: нажмите «Отправить идею» ещё раз, чтобы подать его отдельной идеей.',
-      )
+      notify.error(t('contest.submission.reused'))
       reload()
     } else {
       failed(failure)
@@ -123,7 +121,7 @@ async function saveEdit(idea, payload) {
   try {
     await api.updateIdea(idea.id, { ...payload, version: editBase.value.version })
     cancelEdit()
-    notify.success('Изменения сохранены')
+    notify.success(t('contest.submission.saved'))
     reload()
   } catch (failure) {
     if (failure.status === 409 && failure.detail?.current) {
@@ -143,21 +141,21 @@ async function saveEdit(idea, payload) {
 async function deleteIdea(idea) {
   const duringVoting = phase.value === 'voting'
   const confirmed = await confirmAction({
-    title: 'Удалить идею?',
+    title: t('contest.remove.title'),
     message: duringVoting
-      ? `«${idea.title}» исчезнет у всех участников вместе со всеми голосами за неё. Отменить удаление нельзя.`
-      : `«${idea.title}» будет удалена. Отменить удаление нельзя.`,
-    confirmText: 'Удалить',
+      ? t('contest.remove.duringVoting', { title: idea.title })
+      : t('contest.remove.beforeVoting', { title: idea.title }),
+    confirmText: t('contest.remove.confirm'),
     danger: true,
   })
   if (!confirmed || pendingIdea[idea.id]) return
   pendingIdea[idea.id] = 'delete'
   try {
     await api.deleteIdea(idea.id)
-    notify.success('Идея удалена')
+    notify.success(t('contest.remove.done'))
   } catch (failure) {
     // 404 — идея уже удалена (например, во второй вкладке): цель достигнута (REVIEW Г3).
-    if (failure.status === 404) notify.success('Идея уже удалена')
+    if (failure.status === 404) notify.success(t('contest.remove.already'))
     else notify.error(failure.message)
   } finally {
     delete pendingIdea[idea.id]
@@ -182,18 +180,24 @@ async function castVote(idea, revoke = false) {
 
 <template>
   <div class="container page">
-    <RouterLink class="back" :to="{ name: 'contests' }"><Icon name="arrow-left" /> Все конкурсы</RouterLink>
+    <RouterLink class="back" :to="{ name: 'contests' }"><Icon name="arrow-left" /> {{ t('contest.back') }}</RouterLink>
 
     <EmptyState
       v-if="error?.status === 404"
       icon="eye-off"
-      title="Конкурс не найден"
-      text="Такого конкурса нет, или вы не входите в список его участников."
+      :title="t('contest.notFound.title')"
+      :text="t('contest.notFound.text')"
     >
-      <RouterLink class="btn" :to="{ name: 'contests' }">К списку конкурсов</RouterLink>
+      <RouterLink class="btn" :to="{ name: 'contests' }">{{ t('contest.notFound.toList') }}</RouterLink>
     </EmptyState>
-    <EmptyState v-else-if="error" tone="error" icon="alert" title="Не удалось загрузить конкурс" :text="error.message">
-      <button class="btn" type="button" @click="reload"><Icon name="refresh" /> Повторить</button>
+    <EmptyState
+      v-else-if="error"
+      tone="error"
+      icon="alert"
+      :title="t('contest.loadFailed')"
+      :text="error.message"
+    >
+      <button class="btn" type="button" @click="reload"><Icon name="refresh" /> {{ t('common.retry') }}</button>
     </EmptyState>
 
     <div v-else-if="!snapshot" class="stack" aria-busy="true">
@@ -206,15 +210,15 @@ async function castVote(idea, revoke = false) {
       <header class="contest-header">
         <div class="row">
           <PhaseBadge :phase="phase" />
-          <span class="faint">Конкурс №{{ contest.id }} · создан {{ formatDateTime(contest.created_at, now) }}</span>
+          <span class="faint">{{ t('contest.meta', { id: contest.id, date: formatDateTime(contest.created_at, now) }) }}</span>
         </div>
         <h1 class="topic">{{ contest.topic }}</h1>
       </header>
 
       <div v-if="refreshFailed" class="notice notice-warning refresh" role="status">
         <Icon name="wifi" class="icon" />
-        <span>Не удалось обновить данные — показано последнее известное состояние.</span>
-        <button class="btn btn-sm" type="button" @click="reload">Обновить</button>
+        <span>{{ t('contest.refreshFailed') }}</span>
+        <button class="btn btn-sm" type="button" @click="reload">{{ t('contest.refresh') }}</button>
       </div>
 
       <PhaseTimeline :contest="contest" :now="now" />
@@ -228,10 +232,14 @@ async function castVote(idea, revoke = false) {
             <section v-if="phase === 'submission'" class="card hidden-ideas">
               <Icon name="eye-off" :size="22" />
               <div>
-                <h2>Идеи скрыты до начала голосования</h2>
+                <h2>{{ t('contest.organizer.hiddenTitle') }}</h2>
                 <p class="muted">
-                  Подано: {{ countOf(snapshot.stats.ideas_count, ['идея', 'идеи', 'идей']) }}. Тексты появятся
-                  {{ formatDateTime(contest.submission_deadline, now) }}, авторы — только после финала.
+                  {{
+                    t('contest.organizer.hiddenText', {
+                      ideas: tn('common.ideas', snapshot.stats.ideas_count),
+                      date: formatDateTime(contest.submission_deadline, now),
+                    })
+                  }}
                 </p>
               </div>
             </section>
@@ -239,21 +247,26 @@ async function castVote(idea, revoke = false) {
             <section v-else-if="phase === 'voting'">
               <div class="section-title">
                 <Icon name="chart" />
-                <h2>Текущие результаты</h2>
-                <span class="live"><span class="pulse" /> обновляется сам</span>
+                <h2>{{ t('contest.organizer.liveTitle') }}</h2>
+                <span class="live"><span class="pulse" /> {{ t('contest.organizer.live') }}</span>
               </div>
               <ResultsList v-if="ideas.length" :ideas="ideas" :final="false" />
-              <EmptyState v-else icon="inbox" title="Идей не подано" text="Голосовать не за что; после срока конкурс завершится без победителя." />
-              <p class="faint note">Авторы скрыты от всех, в том числе от вас, до финала.</p>
+              <EmptyState
+                v-else
+                icon="inbox"
+                :title="t('contest.noIdeas')"
+                :text="t('contest.organizer.nothingToVote')"
+              />
+              <p class="faint note">{{ t('contest.organizer.authorsHidden') }}</p>
             </section>
 
             <section v-else>
               <div class="section-title">
                 <Icon name="trophy" />
-                <h2>Итоги</h2>
+                <h2>{{ t('contest.resultsTitle') }}</h2>
               </div>
               <ResultsList v-if="ideas.length" :ideas="ideas" :winner-id="snapshot.winner_idea_id" final />
-              <EmptyState v-else icon="inbox" title="Идей не подано" text="Конкурс завершён без победителя." />
+              <EmptyState v-else icon="inbox" :title="t('contest.noIdeas')" :text="t('contest.noWinner')" />
             </section>
           </template>
 
@@ -262,12 +275,12 @@ async function castVote(idea, revoke = false) {
             <section class="card">
               <div class="card-title">
                 <Icon name="bulb" />
-                <h2>Новая идея</h2>
+                <h2>{{ t('contest.submission.newIdea') }}</h2>
               </div>
               <IdeaForm
                 ref="ideaForm"
                 id-prefix="new-idea"
-                submit-label="Отправить идею"
+                :submit-label="t('contest.submission.submit')"
                 :pending="submitPending"
                 @submit="submitIdea"
               />
@@ -275,32 +288,26 @@ async function castVote(idea, revoke = false) {
 
             <section>
               <div class="section-title">
-                <h2>Мои идеи</h2>
+                <h2>{{ t('contest.submission.myIdeas') }}</h2>
                 <span class="count">{{ myIdeas.length }}</span>
               </div>
               <div v-if="myIdeas.length" class="stack">
                 <template v-for="idea in myIdeas" :key="idea.id">
                   <section v-if="editingId === idea.id" class="card editing">
-                    <div class="card-title"><Icon name="edit" /><h3>Правка идеи</h3></div>
+                    <div class="card-title"><Icon name="edit" /><h3>{{ t('contest.submission.editTitle') }}</h3></div>
                     <div v-if="editConflict" class="notice notice-warning conflict" role="status">
                       <Icon name="alert" class="icon" />
-                      <span>
-                        Идею уже изменили в другой вкладке. Ниже — актуальный текст: внесите правку заново и
-                        сохраните.
-                      </span>
+                      <span>{{ t('contest.submission.conflict') }}</span>
                     </div>
                     <div v-else-if="editedElsewhere" class="notice notice-warning conflict" role="status">
                       <Icon name="alert" class="icon" />
-                      <span>
-                        Пока вы редактировали, идею изменили в другой вкладке. При сохранении покажем актуальный
-                        текст, чтобы ничего не перезаписать.
-                      </span>
+                      <span>{{ t('contest.submission.editedElsewhere') }}</span>
                     </div>
                     <IdeaForm
                       :id-prefix="`edit-${idea.id}`"
                       :initial-title="editBase.title"
                       :initial-description="editBase.description"
-                      submit-label="Сохранить"
+                      :submit-label="t('common.save')"
                       cancelable
                       :pending="editPending"
                       @submit="(payload) => saveEdit(idea, payload)"
@@ -318,14 +325,13 @@ async function castVote(idea, revoke = false) {
                   />
                 </template>
               </div>
-              <p v-else class="muted">Вы ещё не подали идей. Можно подать несколько.</p>
+              <p v-else class="muted">{{ t('contest.submission.noMine') }}</p>
             </section>
 
             <div class="notice">
               <Icon name="eye-off" class="icon" />
               <span>
-                Идеи других участников скрыты до начала голосования — от всех, включая организатора. Свои идеи можно
-                менять до {{ formatDateTime(contest.submission_deadline, now) }}.
+                {{ t('contest.submission.hiddenNotice', { date: formatDateTime(contest.submission_deadline, now) }) }}
               </span>
             </div>
           </template>
@@ -335,18 +341,17 @@ async function castVote(idea, revoke = false) {
             <div class="notice notice-info">
               <Icon name="vote" class="icon" />
               <span>
-                Голосуйте за любые чужие идеи — по одному голосу за каждую. Голос можно отозвать до
-                {{ formatDateTime(contest.voting_deadline, now) }}. Авторы и результаты скрыты до финала.
+                {{ t('contest.voting.notice', { date: formatDateTime(contest.voting_deadline, now) }) }}
               </span>
             </div>
 
             <section>
               <div class="section-title">
-                <h2>Идеи</h2>
+                <h2>{{ t('contest.voting.ideas') }}</h2>
                 <span class="count">{{ ideas.length }}</span>
                 <span class="spacer" />
                 <span class="badge badge-success" data-test="my-votes">
-                  Ваших голосов: {{ myVotes }} из {{ othersIdeas.length }}
+                  {{ t('contest.voting.myVotes', { votes: myVotes, total: othersIdeas.length }) }}
                 </span>
               </div>
               <div v-if="ideas.length" class="stack">
@@ -362,7 +367,7 @@ async function castVote(idea, revoke = false) {
                   @delete="deleteIdea"
                 />
               </div>
-              <EmptyState v-else icon="inbox" title="Идей не подано" text="Голосовать не за что." />
+              <EmptyState v-else icon="inbox" :title="t('contest.noIdeas')" :text="t('contest.voting.nothingToVote')" />
             </section>
           </template>
 
@@ -371,28 +376,31 @@ async function castVote(idea, revoke = false) {
             <div v-if="winner?.is_mine" class="celebrate" role="status">
               <Icon name="trophy" :size="28" />
               <div>
-                <h2>Ваша идея победила!</h2>
-                <p>«{{ winner.title }}» — {{ countOf(winner.votes_count, ['голос', 'голоса', 'голосов']) }}.</p>
+                <h2>{{ t('contest.finished.won') }}</h2>
+                <p>{{ t('contest.finished.wonText', { title: winner.title, votes: tn('common.votes', winner.votes_count) }) }}</p>
               </div>
             </div>
             <section>
               <div class="section-title">
                 <Icon name="trophy" />
-                <h2>Итоги</h2>
+                <h2>{{ t('contest.resultsTitle') }}</h2>
               </div>
               <ResultsList v-if="ideas.length" :ideas="ideas" :winner-id="snapshot.winner_idea_id" final />
-              <EmptyState v-else icon="inbox" title="Идей не подано" text="Конкурс завершён без победителя." />
+              <EmptyState v-else icon="inbox" :title="t('contest.noIdeas')" :text="t('contest.noWinner')" />
             </section>
           </template>
         </main>
 
         <aside class="aside stack">
           <section class="card rule">
-            <div class="card-title"><Icon name="trophy" /><h2>Как определяется победитель</h2></div>
+            <div class="card-title"><Icon name="trophy" /><h2>{{ t('contest.rule.title') }}</h2></div>
             <ol class="rule-list">
-              <li>Больше голосов — выше место.</li>
-              <li>При равенстве голосов выше идея, <strong>поданная раньше</strong>; правка не меняет время подачи.</li>
-              <li>Если голосов нет совсем, побеждает самая ранняя идея; если идей нет — победителя нет.</li>
+              <li>{{ t('contest.rule.votes') }}</li>
+              <li>
+                {{ t('contest.rule.tieBefore') }} <strong>{{ t('contest.rule.tieStrong') }}</strong
+                >{{ t('contest.rule.tieAfter') }}
+              </li>
+              <li>{{ t('contest.rule.none') }}</li>
             </ol>
           </section>
 
@@ -401,13 +409,13 @@ async function castVote(idea, revoke = false) {
             <ParticipantsPanel :contest-id="contest.id" />
           </template>
           <section v-else class="card">
-            <div class="card-title"><Icon name="user" /><h2>Моё участие</h2></div>
+            <div class="card-title"><Icon name="user" /><h2>{{ t('contest.mine.title') }}</h2></div>
             <ul class="facts">
-              <li><span>Мои идеи</span><strong>{{ myIdeas.length }}</strong></li>
-              <li v-if="phase !== 'submission'"><span>Мои голоса</span><strong>{{ myVotes }}</strong></li>
+              <li><span>{{ t('contest.mine.ideas') }}</span><strong>{{ myIdeas.length }}</strong></li>
+              <li v-if="phase !== 'submission'"><span>{{ t('contest.mine.votes') }}</span><strong>{{ myVotes }}</strong></li>
             </ul>
             <RouterLink class="btn btn-soft btn-sm mail-link" :to="{ name: 'mail', query: { contest: contest.id } }">
-              <Icon name="mail" /> Мои письма по конкурсу
+              <Icon name="mail" /> {{ t('contest.mine.mail') }}
             </RouterLink>
           </section>
         </aside>

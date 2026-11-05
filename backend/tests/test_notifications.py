@@ -206,3 +206,32 @@ async def test_journal_never_points_at_authors_before_final(client, app, t, cid,
             everyone = {user_ids[u] for u in PARTICIPANTS}
             for kind, recipients in by_kind.items():
                 assert recipients in (everyone, {user_ids["organizer"]}), (moment, kind, recipients)
+
+
+async def test_letters_come_in_the_recipients_language(client, app, t, clock, user_ids):
+    """Письмо — на языке получателя (D-065): Вера выбрала английский, Борис — нет."""
+    await client.patch("/api/auth/me/preferences", json={"locale": "en"}, headers=auth(t["vera"]))
+    await client.patch("/api/auth/me/preferences", json={"locale": "en"}, headers=auth(t["organizer"]))
+    contest = await create_contest(
+        client, t["organizer"], topic="Офис", submission_deadline=SUB_END, voting_deadline=VOTE_END,
+        participants=[user_ids["vera"], user_ids["boris"]],
+    )
+    idea_id = (await submit_idea(client, t["boris"], contest["id"], "Кофемашина")).json()["id"]
+    clock.set(SUB_END)
+    await app.state.jobs.run_due()
+    await vote(client, t["vera"], idea_id)
+    clock.set(VOTE_END)
+    await app.state.jobs.run_due()
+
+    def subjects(user):
+        return [(e.kind, e.subject) for e in rows if e.recipient_id == user_ids[user]]
+
+    rows = await letters(app)
+    assert ("invitation", "You're invited to the idea contest “Офис”") in subjects("vera")
+    assert ("voting_open", "Voting is open: “Офис”") in subjects("vera")
+    assert ("final", "Results of the contest “Офис”") in subjects("vera")
+    assert ("final", "Your idea won the contest «Офис»") in [(k, s.replace("Ваша идея победила в конкурсе", "Your idea won the contest")) for k, s in subjects("boris")]
+    assert ("invitation", "Вас пригласили в конкурс идей «Офис»") in subjects("boris")
+    assert ("final", "Contest finished: “Офис”") in subjects("organizer")
+    final_vera = next(e for e in rows if e.recipient_id == user_ids["vera"] and e.kind == "final")
+    assert "1. Кофемашина — 1 vote — author: Борис Котов" in final_vera.body  # данные не переводятся

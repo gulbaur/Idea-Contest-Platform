@@ -3,7 +3,8 @@
 // D-008). Сервер же решает, видны ли счёт и авторы; компонент только показывает.
 import { computed } from 'vue'
 
-import { formatDateTime, formatPrecise, plural } from '../lib/format.js'
+import { formatDateTime, formatPrecise } from '../lib/format.js'
+import { t, tn } from '../lib/i18n.js'
 import Icon from './Icon.vue'
 
 const props = defineProps({
@@ -22,7 +23,6 @@ const tie = computed(() => {
   return { leader: first, others: tied.slice(1), votes: first.votes_count }
 })
 
-const votesLabel = (n) => `${n} ${plural(n, ['голос', 'голоса', 'голосов'])}`
 </script>
 
 <template>
@@ -30,14 +30,14 @@ const votesLabel = (n) => `${n} ${plural(n, ['голос', 'голоса', 'го
     <div v-if="tie" class="notice notice-warning tie" data-test="tie-note">
       <Icon name="info" class="icon" />
       <span v-if="tie.votes === 0 && final">
-        Голосов нет — по правилу ничьей побеждает самая ранняя идея: «{{ tie.leader.title }}»
-        (подана {{ formatPrecise(tie.leader.submitted_at) }}).
+        {{ t('contest.results.noVotes', { title: tie.leader.title, time: formatPrecise(tie.leader.submitted_at) }) }}
       </span>
       <span v-else>
-        У {{ tie.others.length + 1 }} идей поровну — {{ votesLabel(tie.votes) }}.
-        {{ final ? 'Победила' : 'Сейчас лидирует' }} идея, поданная раньше: «{{ tie.leader.title }}»
-        ({{ formatPrecise(tie.leader.submitted_at) }}<template v-for="other in tie.others" :key="other.id"
-          >, «{{ other.title }}» — {{ formatPrecise(other.submitted_at) }}</template
+        {{ t('contest.results.tie', { count: tie.others.length + 1, votes: tn('common.votes', tie.votes) }) }}
+        {{ t(final ? 'contest.results.tieWon' : 'contest.results.tieLeads', { title: tie.leader.title }) }}
+        ({{ formatPrecise(tie.leader.submitted_at) }}<template v-for="other in tie.others" :key="other.id">{{
+          t('contest.results.tieOther', { title: other.title, time: formatPrecise(other.submitted_at) })
+        }}</template
         >).
       </span>
     </div>
@@ -58,23 +58,23 @@ const votesLabel = (n) => `${n} ${plural(n, ['голос', 'голоса', 'го
         <div class="main">
           <div class="head">
             <h3 class="title">{{ idea.title }}</h3>
-            <span v-if="final && idea.id === winnerId" class="badge badge-gold">Победитель</span>
-            <span v-if="idea.is_mine" class="badge badge-primary">Ваша идея</span>
-            <span v-if="idea.voted_by_me" class="badge badge-success"><Icon name="check" :size="13" /> Ваш голос</span>
+            <span v-if="final && idea.id === winnerId" class="badge badge-gold">{{ t('contest.results.winner') }}</span>
+            <span v-if="idea.is_mine" class="badge badge-primary">{{ t('contest.idea.yours') }}</span>
+            <span v-if="idea.voted_by_me" class="badge badge-success"><Icon name="check" :size="13" /> {{ t('contest.idea.yourVote') }}</span>
           </div>
           <p class="description">{{ idea.description }}</p>
           <div class="meta">
             <span v-if="idea.author" class="author" data-test="author">
               <Icon name="user" :size="14" /> {{ idea.author.display_name }}
             </span>
-            <span v-else class="faint"><Icon name="eye-off" :size="14" /> автор скрыт до финала</span>
-            <span class="faint">подана {{ formatDateTime(idea.submitted_at) }}</span>
+            <span v-else class="faint"><Icon name="eye-off" :size="14" /> {{ t('contest.results.authorHidden') }}</span>
+            <span class="faint">{{ t('contest.results.submittedAt', { date: formatDateTime(idea.submitted_at) }) }}</span>
           </div>
         </div>
 
         <div class="score">
           <div class="votes" data-test="votes">{{ idea.votes_count }}</div>
-          <div class="faint">{{ plural(idea.votes_count, ['голос', 'голоса', 'голосов']) }}</div>
+          <div class="faint">{{ tn('contest.results.votesWord', idea.votes_count) }}</div>
           <div class="bar" aria-hidden="true">
             <span :style="{ width: `${Math.round((idea.votes_count / maxVotes) * 100)}%` }" />
           </div>

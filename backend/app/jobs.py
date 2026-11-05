@@ -15,6 +15,7 @@ from sqlalchemy import exists, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app import mail_en
 from app.clock import Clock
 from app.domain import Phase, phase_at, ranking_key
 from app.models import (
@@ -148,6 +149,9 @@ async def ranked_ideas(db: AsyncSession, contest_id: int) -> list[RankedIdea]:
 
 
 def _reminder_text(kind: JobKind, contest: Contest, user: User) -> tuple[str, str]:
+    # Письмо — на языке получателя (D-065).
+    if user.locale == "en":
+        return mail_en.reminder(kind.value, contest.topic, user.display_name, contest.submission_deadline, contest.voting_deadline)
     if kind == JobKind.REMIND_SUBMISSION:
         deadline = _when(contest.submission_deadline)
         return (
@@ -166,6 +170,8 @@ def _reminder_text(kind: JobKind, contest: Contest, user: User) -> tuple[str, st
 
 
 def invitation_text(contest: Contest, user: User) -> tuple[str, str]:
+    if user.locale == "en":
+        return mail_en.invitation(contest.topic, user.display_name, contest.submission_deadline, contest.voting_deadline)
     return (
         f"Вас пригласили в конкурс идей «{contest.topic}»",
         f"Здравствуйте, {user.display_name}!\n\n"
@@ -178,6 +184,8 @@ def invitation_text(contest: Contest, user: User) -> tuple[str, str]:
 
 
 def _voting_open_text(contest: Contest, user: User, ideas: int) -> tuple[str, str]:
+    if user.locale == "en":
+        return mail_en.voting_open(contest.topic, user.display_name, ideas, contest.voting_deadline)
     return (
         f"Голосование открыто: «{contest.topic}»",
         f"Здравствуйте, {user.display_name}!\n\n"
@@ -199,6 +207,10 @@ def _ideas(n: int) -> str:
 
 def _organizer_text(kind: EmailKind, contest: Contest, user: User, facts: dict) -> tuple[str, str]:
     """Письма организатору (D-063). До финала — только числа, которые он и так видит на экране."""
+    if user.locale == "en":
+        return mail_en.organizer(
+            kind.value, contest.topic, user.display_name, facts, contest.submission_deadline, contest.voting_deadline
+        )
     hello = f"Здравствуйте, {user.display_name}!\n\n"
     topic = contest.topic
     if kind == EmailKind.ORG_SUBMISSION_SOON:
@@ -234,12 +246,20 @@ def _organizer_text(kind: EmailKind, contest: Contest, user: User, facts: dict) 
     return (
         f"Сбой рассылки: «{topic}»",
         hello
-        + f"В конкурсе «{topic}» не выполнено задание «{facts['job']}» после нескольких попыток: "
+        + f"В конкурсе «{topic}» не выполнено задание «{JOB_TITLES[JobKind(facts['job'])]}» после нескольких попыток: "
         "письма участникам могли не уйти. Подробности — в расписании на странице конкурса.",
     )
 
 
 def _final_text(contest: Contest, user: User, ranking: list[RankedIdea]) -> tuple[str, str]:
+    if user.locale == "en":
+        return mail_en.final(
+            contest.topic,
+            user.display_name,
+            ranking,
+            is_organizer=user.role == Role.ORGANIZER,
+            is_winner=bool(ranking) and ranking[0].author_id == user.id,
+        )
     greeting = f"Здравствуйте, {user.display_name}!\n\n"
     if not ranking:
         return (
@@ -417,7 +437,7 @@ class JobRunner:
                 async with db.begin_nested():
                     contest = await db.get(Contest, job.contest_id)
                     notified = await _notify_organizer(
-                        db, contest, EmailKind.ORG_JOB_FAILED, {"job": JOB_TITLES[JobKind(job.kind)]}, now
+                        db, contest, EmailKind.ORG_JOB_FAILED, {"job": job.kind}, now
                     )
             except Exception:  # noqa: BLE001
                 log.exception("Не удалось записать письмо о сбое задания %s", job.id)

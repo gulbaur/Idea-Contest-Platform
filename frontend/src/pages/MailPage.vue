@@ -11,6 +11,7 @@ import { useServerNow } from '../composables/useServerNow.js'
 import { api } from '../lib/api.js'
 import { useSignals } from '../lib/connection.js'
 import { formatDateTime } from '../lib/format.js'
+import { t } from '../lib/i18n.js'
 import { kindOf } from '../lib/mail.js'
 import { notify } from '../lib/notify.js'
 import { refreshUnread, unread } from '../lib/unread.js'
@@ -113,36 +114,36 @@ const selected = computed(() => letters.value?.find((letter) => letter.id === se
   <div class="container page">
     <header class="page-header">
       <div>
-        <h1>Входящие</h1>
-        <p class="subtitle">Письма, отправленные вам: приглашения, напоминания, итоги конкурсов.</p>
+        <h1>{{ t('mail.title') }}</h1>
+        <p class="subtitle">{{ t('mail.subtitle') }}</p>
       </div>
       <button v-if="unread.count" class="btn btn-sm" type="button" @click="readAll">
-        <Icon name="check" :size="16" /> Отметить все прочитанными
+        <Icon name="check" :size="16" /> {{ t('mail.readAll') }}
       </button>
     </header>
 
     <div class="toolbar">
-      <select v-model="contestFilter" class="select contest-select" aria-label="Конкурс">
-        <option value="">Все конкурсы</option>
+      <select v-model="contestFilter" class="select contest-select" :aria-label="t('mail.contest')">
+        <option value="">{{ t('mail.allContests') }}</option>
         <option v-for="item in contests" :key="item.id" :value="item.id">{{ item.topic }}</option>
       </select>
-      <div class="segmented" role="tablist" aria-label="Какие письма">
+      <div class="segmented" role="tablist" :aria-label="t('mail.whichLetters')">
         <button type="button" role="tab" :aria-selected="!onlyUnread" :class="{ active: !onlyUnread }" @click="onlyUnread = false">
-          Все
+          {{ t('mail.all') }}
         </button>
         <button type="button" role="tab" :aria-selected="onlyUnread" :class="{ active: onlyUnread }" @click="onlyUnread = true">
-          Непрочитанные <span class="count">{{ unread.count }}</span>
+          {{ t('mail.unread') }} <span class="count">{{ unread.count }}</span>
         </button>
       </div>
     </div>
 
     <div class="notice stub">
       <Icon name="info" class="icon" />
-      <span>Это демонстрационная почта: письма сохраняются в базе данных и показываются здесь, наружу они не отправляются.</span>
+      <span>{{ t('mail.demoNotice') }}</span>
     </div>
 
-    <EmptyState v-if="error" tone="error" icon="alert" title="Не удалось загрузить письма" :text="error.message">
-      <button class="btn" type="button" @click="load"><Icon name="refresh" /> Повторить</button>
+    <EmptyState v-if="error" tone="error" icon="alert" :title="t('mail.loadFailed')" :text="error.message">
+      <button class="btn" type="button" @click="load"><Icon name="refresh" /> {{ t('common.retry') }}</button>
     </EmptyState>
 
     <div v-else-if="!letters" class="stack-sm">
@@ -152,12 +153,12 @@ const selected = computed(() => letters.value?.find((letter) => letter.id === se
     <EmptyState
       v-else-if="!letters.length"
       icon="mail"
-      :title="onlyUnread ? 'Непрочитанных писем нет' : 'Писем пока нет'"
-      text="Сюда приходят приглашения в конкурсы, напоминания незадолго до конца раунда и итоги после финала."
+      :title="onlyUnread ? t('mail.noUnread') : t('mail.empty')"
+      :text="t('mail.emptyText')"
     />
 
     <div v-else class="mailbox" :class="{ reading: selected }">
-      <ul class="list card" aria-label="Письма">
+      <ul class="list card" :aria-label="t('mail.letters')">
         <li v-for="letter in letters" :key="letter.id">
           <button
             class="item"
@@ -172,25 +173,25 @@ const selected = computed(() => letters.value?.find((letter) => letter.id === se
               <span class="meta">{{ kindOf(letter.kind).label }} · {{ letter.contest_topic }}</span>
             </span>
             <span class="time faint">{{ formatDateTime(letter.created_at, now) }}</span>
-            <span v-if="!letter.read_at" class="dot" aria-label="не прочитано" />
+            <span v-if="!letter.read_at" class="dot" :aria-label="t('mail.notRead')" />
           </button>
         </li>
         <li v-if="hasMore" class="more">
           <button class="btn btn-ghost btn-sm" type="button" :disabled="loadingMore" @click="loadMore">
-            <span v-if="loadingMore" class="spinner" aria-hidden="true" /> Показать ещё
+            <span v-if="loadingMore" class="spinner" aria-hidden="true" /> {{ t('common.showMore') }}
           </button>
         </li>
       </ul>
 
       <article v-if="selected" class="letter card" aria-live="polite">
         <button class="btn btn-ghost btn-sm close" type="button" @click="selectedId = null">
-          <Icon name="arrow-left" /> К списку
+          <Icon name="arrow-left" /> {{ t('mail.backToList') }}
         </button>
         <LetterView :letter="selected" :now="now" />
       </article>
       <div v-else class="letter placeholder">
         <Icon name="mail" :size="28" />
-        <p class="muted">Выберите письмо, чтобы прочитать его.</p>
+        <p class="muted">{{ t('mail.choose') }}</p>
       </div>
     </div>
   </div>

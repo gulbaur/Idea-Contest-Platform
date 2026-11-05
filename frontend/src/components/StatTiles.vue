@@ -2,7 +2,7 @@
 // Статистика экрана организатора (F8): идеи, разные проголосовавшие люди, голоса.
 import { computed } from 'vue'
 
-import { plural } from '../lib/format.js'
+import { t, tn } from '../lib/i18n.js'
 import Icon from './Icon.vue'
 
 const props = defineProps({ stats: { type: Object, required: true } })
@@ -18,27 +18,27 @@ const share = computed(() =>
       <span class="mark"><Icon name="users" /></span>
       <div>
         <div class="value">{{ stats.participants_count }}</div>
-        <div class="label">{{ plural(stats.participants_count, ['участник', 'участника', 'участников']) }}</div>
+        <div class="label">{{ tn('contest.stats.participants', stats.participants_count) }}</div>
       </div>
     </div>
     <div class="tile">
       <span class="mark"><Icon name="bulb" /></span>
       <div>
         <div class="value" data-test="ideas-count">{{ stats.ideas_count }}</div>
-        <div class="label">{{ plural(stats.ideas_count, ['идея подана', 'идеи подано', 'идей подано']) }}</div>
+        <div class="label">{{ tn('contest.stats.ideas', stats.ideas_count) }}</div>
       </div>
     </div>
     <div class="tile wide">
       <span class="mark"><Icon name="vote" /></span>
       <div class="grow">
         <div class="value" data-test="voters-count">
-          {{ stats.voters_count }} <span class="of">из {{ stats.participants_count }}</span>
+          {{ stats.voters_count }} <span class="of">{{ t('contest.stats.of', { n: stats.participants_count }) }}</span>
         </div>
         <div class="label">
           <!-- «4 из 5 человек проголосовали»: существительное согласуется с общим числом, глагол — с числом проголосовавших. -->
-          {{ plural(stats.participants_count, ['человека', 'человек', 'человек']) }}
-          {{ plural(stats.voters_count, ['проголосовал', 'проголосовали', 'проголосовали']) }}
-          · {{ stats.votes_count }} {{ plural(stats.votes_count, ['голос', 'голоса', 'голосов']) }}
+          {{ tn('contest.stats.peopleOf', stats.participants_count) }}
+          {{ tn('contest.stats.voted', stats.voters_count) }}
+          · {{ tn('common.votes', stats.votes_count) }}
         </div>
         <div class="bar" role="progressbar" :aria-valuenow="share" aria-valuemin="0" aria-valuemax="100">
           <span :style="{ width: `${share}%` }" />

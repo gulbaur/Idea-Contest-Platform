@@ -13,6 +13,7 @@ import { useServerNow } from '../composables/useServerNow.js'
 import { api } from '../lib/api.js'
 import { useSignals } from '../lib/connection.js'
 import { formatDateTime } from '../lib/format.js'
+import { t } from '../lib/i18n.js'
 import { KINDS, kindOf } from '../lib/mail.js'
 import { notify } from '../lib/notify.js'
 import { isOrganizer } from '../lib/session.js'
@@ -97,38 +98,38 @@ const kindOptions = computed(() => Object.entries(KINDS).map(([key, value]) => (
   <div class="container page">
     <header class="page-header">
       <div>
-        <h1>Журнал рассылки</h1>
-        <p class="subtitle">
-          Все отправленные письма: кому, что и когда. Напоминания идущих конкурсов появятся здесь после финала — по их
-          получателям можно было бы вычислить авторов идей.
-        </p>
+        <h1>{{ t('mail.journal.title') }}</h1>
+        <p class="subtitle">{{ t('mail.journal.subtitle') }}</p>
       </div>
     </header>
 
     <div class="toolbar">
       <label class="search">
-        <span class="sr-only">Получатель</span>
+        <span class="sr-only">{{ t('mail.journal.recipient') }}</span>
         <Icon name="search" :size="16" class="icon" />
-        <input v-model="recipient" class="input" type="search" placeholder="Получатель: имя или адрес" />
+        <input v-model="recipient" class="input" type="search" :placeholder="t('mail.journal.recipientPlaceholder')" />
       </label>
-      <select v-if="contests.length" v-model="contestId" class="select narrow" aria-label="Конкурс">
-        <option value="">Все конкурсы</option>
+      <select v-if="contests.length" v-model="contestId" class="select narrow" :aria-label="t('mail.contest')">
+        <option value="">{{ t('mail.allContests') }}</option>
         <option v-for="item in contests" :key="item.id" :value="item.id">{{ item.topic }}</option>
       </select>
-      <select v-model="kind" class="select narrow" aria-label="Вид письма">
-        <option value="">Все виды писем</option>
+      <select v-model="kind" class="select narrow" :aria-label="t('mail.journal.kind')">
+        <option value="">{{ t('mail.journal.allKinds') }}</option>
         <option v-for="item in kindOptions" :key="item.key" :value="item.key">{{ item.label }}</option>
       </select>
     </div>
 
-    <EmptyState v-if="error" tone="error" icon="alert" title="Не удалось загрузить журнал" :text="error.message">
-      <button class="btn" type="button" @click="load"><Icon name="refresh" /> Повторить</button>
+    <EmptyState v-if="error" tone="error" icon="alert" :title="t('mail.journal.loadFailed')" :text="error.message">
+      <button class="btn" type="button" @click="load"><Icon name="refresh" /> {{ t('common.retry') }}</button>
     </EmptyState>
     <div v-else-if="!letters" class="card list"><div v-for="n in 5" :key="n" class="skeleton loading-row" /></div>
-    <EmptyState v-else-if="!letters.length" icon="mail" title="Писем не найдено" text="Измените фильтры или подождите — письма появятся по расписанию конкурсов." />
+    <EmptyState v-else-if="!letters.length" icon="mail" :title="t('mail.journal.empty')" :text="t('mail.journal.emptyText')" />
 
     <div v-else class="card list">
-      <div class="columns" aria-hidden="true"><span>Когда</span><span>Получатель</span><span>Письмо</span><span>Вид</span></div>
+      <div class="columns" aria-hidden="true">
+        <span>{{ t('mail.journal.colWhen') }}</span><span>{{ t('mail.journal.colRecipient') }}</span>
+        <span>{{ t('mail.journal.colLetter') }}</span><span>{{ t('mail.journal.colKind') }}</span>
+      </div>
       <button
         v-for="letter in letters"
         :key="letter.id"
@@ -149,11 +150,11 @@ const kindOptions = computed(() => Object.entries(KINDS).map(([key, value]) => (
         <span><span class="badge" :class="kindOf(letter.kind).tone">{{ kindOf(letter.kind).label }}</span></span>
       </button>
       <button v-if="hasMore" class="btn btn-ghost btn-sm more" type="button" :disabled="loadingMore" @click="loadMore">
-        <span v-if="loadingMore" class="spinner" aria-hidden="true" /> Показать ещё
+        <span v-if="loadingMore" class="spinner" aria-hidden="true" /> {{ t('common.showMore') }}
       </button>
     </div>
 
-    <ModalDialog v-if="selected" title="Письмо" wide @close="selected = null">
+    <ModalDialog v-if="selected" :title="t('mail.journal.letter')" wide @close="selected = null">
       <LetterView :letter="selected" :now="now" />
     </ModalDialog>
   </div>

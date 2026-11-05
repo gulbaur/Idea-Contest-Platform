@@ -3,6 +3,7 @@
 import { nextTick, ref, watch } from 'vue'
 
 import { answer, dialog } from '../lib/confirm.js'
+import { t } from '../lib/i18n.js'
 import Icon from './Icon.vue'
 
 const confirmButton = ref(null)
@@ -40,7 +41,7 @@ function onKeydown(event) {
         </div>
         <p id="confirm-message" class="message">{{ dialog.message }}</p>
         <div class="actions">
-          <button class="btn" type="button" @click="answer(false)">Отмена</button>
+          <button class="btn" type="button" @click="answer(false)">{{ t('common.cancel') }}</button>
           <button
             ref="confirmButton"
             class="btn"

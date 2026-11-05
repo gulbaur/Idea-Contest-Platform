@@ -1,5 +1,6 @@
 <script setup>
 // Всплывающие уведомления (lib/notify.js). aria-live — их зачитывают экранные дикторы.
+import { t } from '../lib/i18n.js'
 import { dismiss, toasts } from '../lib/notify.js'
 import Icon from './Icon.vue'
 
@@ -12,7 +13,7 @@ const ICON = { success: 'check', error: 'alert', info: 'info' }
       <div v-for="toast in toasts" :key="toast.id" class="toast" :class="toast.kind" role="status">
         <Icon :name="ICON[toast.kind]" />
         <span class="text">{{ toast.text }}</span>
-        <button class="close" type="button" aria-label="Закрыть уведомление" @click="dismiss(toast.id)">
+        <button class="close" type="button" :aria-label="t('app.closeToast')" @click="dismiss(toast.id)">
           <Icon name="x" :size="16" />
         </button>
       </div>

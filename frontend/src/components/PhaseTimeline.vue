@@ -5,6 +5,7 @@ import { computed } from 'vue'
 
 import { phaseAt } from '../lib/clock.js'
 import { formatCountdown, formatDateTime } from '../lib/format.js'
+import { t } from '../lib/i18n.js'
 import Icon from './Icon.vue'
 
 const props = defineProps({
@@ -22,21 +23,21 @@ const steps = computed(() => {
   return [
     {
       key: 'submission',
-      title: 'Приём идей',
+      title: t('contest.timeline.submission'),
       icon: 'bulb',
-      when: `до ${formatDateTime(props.contest.submission_deadline, props.now)}`,
+      when: t('contest.timeline.until', { date: formatDateTime(props.contest.submission_deadline, props.now) }),
       left: submissionEnd - props.now,
     },
     {
       key: 'voting',
-      title: 'Голосование',
+      title: t('contest.timeline.voting'),
       icon: 'vote',
-      when: `до ${formatDateTime(props.contest.voting_deadline, props.now)}`,
+      when: t('contest.timeline.until', { date: formatDateTime(props.contest.voting_deadline, props.now) }),
       left: votingEnd - props.now,
     },
     {
       key: 'finished',
-      title: 'Итоги',
+      title: t('contest.timeline.finished'),
       icon: 'trophy',
       when: formatDateTime(props.contest.voting_deadline, props.now),
       left: null,
@@ -49,7 +50,7 @@ const steps = computed(() => {
 </script>
 
 <template>
-  <ol class="timeline" aria-label="Этапы конкурса">
+  <ol class="timeline" :aria-label="t('contest.timeline.label')">
     <li v-for="step in steps" :key="step.key" class="step" :class="[step.state, step.key]">
       <span class="mark" aria-hidden="true">
         <Icon :name="step.state === 'done' ? 'check' : step.icon" :size="18" />
@@ -57,11 +58,11 @@ const steps = computed(() => {
       <div class="body">
         <div class="title">
           {{ step.title }}
-          <span v-if="step.state === 'current' && step.key !== 'finished'" class="now">сейчас</span>
+          <span v-if="step.state === 'current' && step.key !== 'finished'" class="now">{{ t('contest.timeline.now') }}</span>
         </div>
         <div class="when">{{ step.when }}</div>
         <div v-if="step.state === 'current' && step.left !== null" class="left" aria-live="off">
-          <Icon name="clock" :size="14" /> осталось <strong>{{ formatCountdown(step.left) }}</strong>
+          <Icon name="clock" :size="14" /> {{ t('contest.timeline.left') }} <strong>{{ formatCountdown(step.left) }}</strong>
         </div>
       </div>
     </li>

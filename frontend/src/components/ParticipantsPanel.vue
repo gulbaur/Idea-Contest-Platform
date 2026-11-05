@@ -4,6 +4,7 @@
 import { onMounted, ref } from 'vue'
 
 import { api } from '../lib/api.js'
+import { t } from '../lib/i18n.js'
 import Icon from './Icon.vue'
 
 const props = defineProps({ contestId: { type: Number, required: true } })
@@ -27,12 +28,12 @@ onMounted(load)
   <section class="card">
     <div class="card-title">
       <Icon name="users" />
-      <h2>Участники</h2>
+      <h2>{{ t('contest.participants.title') }}</h2>
       <span v-if="participants" class="faint">{{ participants.length }}</span>
     </div>
     <div v-if="failed" class="row">
-      <span class="muted">Не удалось загрузить список.</span>
-      <button class="btn btn-sm" type="button" @click="load">Повторить</button>
+      <span class="muted">{{ t('contest.participants.failed') }}</span>
+      <button class="btn btn-sm" type="button" @click="load">{{ t('common.retry') }}</button>
     </div>
     <div v-else-if="!participants" class="stack-sm">
       <div v-for="n in 3" :key="n" class="skeleton" style="height: 22px" />
@@ -40,7 +41,7 @@ onMounted(load)
     <ul v-else class="people">
       <li v-for="person in participants" :key="person.id">{{ person.display_name }}</li>
     </ul>
-    <p class="faint hint">Только они подают идеи, голосуют и получают письма. Авторство идей откроется после финала.</p>
+    <p class="faint hint">{{ t('contest.participants.hint') }}</p>
   </section>
 </template>
 

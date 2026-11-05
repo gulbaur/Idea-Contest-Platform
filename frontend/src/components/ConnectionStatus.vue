@@ -3,19 +3,20 @@
 import { computed } from 'vue'
 
 import { realtime } from '../lib/connection.js'
+import { t } from '../lib/i18n.js'
 
 const view = computed(() => {
   switch (realtime.state.status) {
     case 'online':
-      return { tone: 'online', text: 'Онлайн', hint: 'Изменения появляются без перезагрузки страницы' }
+      return { tone: 'online', text: t('app.connection.online'), hint: t('app.connection.onlineHint') }
     case 'offline':
       return {
         tone: 'offline',
-        text: 'Нет связи',
-        hint: 'Соединение потеряно — переподключаемся автоматически; данные обновятся после восстановления',
+        text: t('app.connection.offline'),
+        hint: t('app.connection.offlineHint'),
       }
     default:
-      return { tone: 'connecting', text: 'Подключение…', hint: 'Устанавливаем соединение для обновлений' }
+      return { tone: 'connecting', text: t('app.connection.connecting'), hint: t('app.connection.connectingHint') }
   }
 })
 </script>

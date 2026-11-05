@@ -3,6 +3,7 @@
 import { RouterLink } from 'vue-router'
 
 import { formatCountdown, formatDateTime } from '../lib/format.js'
+import { t } from '../lib/i18n.js'
 import Icon from './Icon.vue'
 
 const props = defineProps({
@@ -12,55 +13,69 @@ const props = defineProps({
   ideas: { type: Array, default: () => [] }, // чтобы назвать победителя по названию, а не по номеру
 })
 
-const KIND = {
-  remind_submission: { title: 'Напоминание о подаче идей', icon: 'bell' },
-  open_voting: { title: 'Начало голосования: письма участникам', icon: 'vote' },
-  remind_voting: { title: 'Напоминание о голосовании', icon: 'bell' },
-  finalize: { title: 'Итоги и письма участникам', icon: 'flag' },
-}
-// Пояснение сервера («писем: 4; победитель — идея 12») — человеческими словами.
-function describe(note) {
-  return note
-    .replace(/^писем: 0(?!\d)/, 'получателей не было')
-    .replace(/^писем: /, 'отправлено писем: ')
-    .replace(/победитель — идея (\d+)/, (text, id) => {
-      const idea = props.ideas.find((item) => item.id === Number(id))
-      return idea ? `победила «${idea.title}»` : text
-    })
+// Названия заданий и состояний — через t() в шаблоне: пересчитываются при смене языка (D-065).
+const KIND_ICON = { remind_submission: 'bell', open_voting: 'vote', remind_voting: 'bell', finalize: 'flag' }
+
+// Пояснение сервера приходит по-русски («писем: 4; победитель — идея 12», «раунд уже закрыт»).
+// Части через «; » узнаём по русскому тексту и показываем человеческими словами на языке интерфейса;
+// незнакомую часть оставляем как есть.
+const NOTE_PHRASES = {
+  'идей нет': 'noIdeas',
+  'идей нет — голосовать не за что': 'nothingToVote',
+  'раунд уже закрыт': 'roundClosed',
+  'голосование уже завершилось': 'votingEnded',
+  'раунд короче срока напоминания': 'roundTooShort',
+  'конкурс создан до появления этого письма': 'createdBefore',
 }
 
-const STATUS = {
-  pending: { text: 'Запланировано', tone: '' },
-  done: { text: 'Выполнено', tone: 'badge-success' },
-  skipped: { text: 'Пропущено', tone: 'badge-warning' },
-  failed: { text: 'Ошибка', tone: 'badge-danger' },
+function describePart(part) {
+  const sent = part.match(/^писем: (\d+)$/)
+  if (sent) {
+    return Number(sent[1]) === 0
+      ? t('contest.schedule.note.noRecipients')
+      : t('contest.schedule.note.sent', { n: sent[1] })
+  }
+  const winner = part.match(/^победитель — идея (\d+)$/)
+  if (winner) {
+    const idea = props.ideas.find((item) => item.id === Number(winner[1]))
+    return idea
+      ? t('contest.schedule.note.winner', { title: idea.title })
+      : t('contest.schedule.note.winnerId', { id: winner[1] })
+  }
+  return NOTE_PHRASES[part] ? t(`contest.schedule.note.${NOTE_PHRASES[part]}`) : part
 }
+
+function describe(note) {
+  return note.split('; ').map(describePart).join('; ')
+}
+
+const STATUS_TONE = { pending: '', done: 'badge-success', skipped: 'badge-warning', failed: 'badge-danger' }
 </script>
 
 <template>
   <section class="card">
     <div class="card-title">
       <Icon name="calendar" />
-      <h2>Расписание</h2>
+      <h2>{{ t('contest.schedule.title') }}</h2>
     </div>
     <ul class="jobs">
       <li v-for="job in schedule" :key="job.kind" class="job" :data-kind="job.kind">
-        <span class="mark" :class="job.status"><Icon :name="KIND[job.kind].icon" :size="16" /></span>
+        <span class="mark" :class="job.status"><Icon :name="KIND_ICON[job.kind]" :size="16" /></span>
         <div class="body">
-          <strong>{{ KIND[job.kind].title }}</strong>
+          <strong>{{ t(`contest.schedule.kind.${job.kind}`) }}</strong>
           <div class="when">
-            <span class="badge" :class="STATUS[job.status].tone">{{ STATUS[job.status].text }}</span>
+            <span class="badge" :class="STATUS_TONE[job.status]">{{ t(`contest.schedule.status.${job.status}`) }}</span>
             <span class="faint">{{ formatDateTime(job.finished_at ?? job.run_at) }}</span>
           </div>
           <div v-if="job.status === 'pending' && Date.parse(job.run_at) > now" class="note faint">
-            через {{ formatCountdown(Date.parse(job.run_at) - now) }}
+            {{ t('contest.schedule.in', { time: formatCountdown(Date.parse(job.run_at) - now) }) }}
           </div>
           <div v-if="job.note" class="note">{{ describe(job.note) }}</div>
         </div>
       </li>
     </ul>
     <RouterLink class="btn btn-soft btn-sm mail-link" :to="{ name: 'journal', query: { contest: contestId } }">
-      <Icon name="mail" /> Письма этого конкурса
+      <Icon name="mail" /> {{ t('contest.schedule.mail') }}
     </RouterLink>
   </section>
 </template>

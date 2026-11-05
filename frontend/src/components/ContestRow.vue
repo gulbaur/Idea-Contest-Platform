@@ -6,6 +6,7 @@ import { RouterLink } from 'vue-router'
 
 import { participation, timeline } from '../lib/contestList.js'
 import { formatCountdown, formatDateTime } from '../lib/format.js'
+import { t } from '../lib/i18n.js'
 import Icon from './Icon.vue'
 import PhaseBadge from './PhaseBadge.vue'
 
@@ -18,10 +19,10 @@ const props = defineProps({
 
 const deadline = computed(() => {
   if (props.phase === 'submission') {
-    return { label: 'Приём идей до', at: props.contest.submission_deadline }
+    return { label: t('contests.row.submissionUntil'), at: props.contest.submission_deadline }
   }
-  if (props.phase === 'voting') return { label: 'Голосование до', at: props.contest.voting_deadline }
-  return { label: 'Итоги', at: props.contest.voting_deadline }
+  if (props.phase === 'voting') return { label: t('contests.row.votingUntil'), at: props.contest.voting_deadline }
+  return { label: t('contests.row.results'), at: props.contest.voting_deadline }
 })
 const left = computed(() => (props.phase === 'finished' ? null : Date.parse(deadline.value.at) - props.now))
 const bar = computed(() => timeline(props.contest, props.now))
@@ -32,7 +33,7 @@ const state = computed(() => participation(props.contest, props.phase, props.org
   <RouterLink :to="{ name: 'contest', params: { id: contest.id } }" class="contest-row" :class="phase">
     <span class="topic-cell">
       <h3 class="topic">{{ contest.topic }}</h3>
-      <span class="faint">Конкурс №{{ contest.id }} · создан {{ formatDateTime(contest.created_at, now) }}</span>
+      <span class="faint">{{ t('contests.row.meta', { id: contest.id, date: formatDateTime(contest.created_at, now) }) }}</span>
     </span>
 
     <span class="phase-cell">
@@ -47,7 +48,7 @@ const state = computed(() => participation(props.contest, props.phase, props.org
     <span class="deadline-cell">
       <span class="faint">{{ deadline.label }}</span>
       <span class="when">{{ formatDateTime(deadline.at, now) }}</span>
-      <span v-if="left !== null" class="left tabular"><Icon name="clock" :size="13" /> осталось {{ formatCountdown(left) }}</span>
+      <span v-if="left !== null" class="left tabular"><Icon name="clock" :size="13" /> {{ t('contests.row.left', { time: formatCountdown(left) }) }}</span>
     </span>
 
     <span class="state-cell">

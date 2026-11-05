@@ -4,6 +4,7 @@
 import { computed } from 'vue'
 
 import { formatDateTime } from '../lib/format.js'
+import { t } from '../lib/i18n.js'
 import Icon from './Icon.vue'
 
 const props = defineProps({
@@ -24,9 +25,9 @@ const edited = computed(() => Boolean(props.idea.updated_at) && props.idea.updat
     <div class="top">
       <h3 class="title">{{ idea.title }}</h3>
       <div class="badges">
-        <span v-if="idea.is_mine" class="badge badge-primary"><Icon name="user" :size="13" /> Ваша идея</span>
+        <span v-if="idea.is_mine" class="badge badge-primary"><Icon name="user" :size="13" /> {{ t('contest.idea.yours') }}</span>
         <span v-if="idea.voted_by_me && !canVote" class="badge badge-success">
-          <Icon name="check" :size="13" /> Ваш голос
+          <Icon name="check" :size="13" /> {{ t('contest.idea.yourVote') }}
         </span>
       </div>
     </div>
@@ -35,13 +36,13 @@ const edited = computed(() => Boolean(props.idea.updated_at) && props.idea.updat
 
     <div class="footer">
       <span class="faint">
-        Подана {{ formatDateTime(idea.submitted_at) }}<template v-if="edited"> · изменена</template>
+        {{ t('contest.idea.submittedAt', { date: formatDateTime(idea.submitted_at) }) }}<template v-if="edited"> · {{ t('contest.idea.edited') }}</template>
       </span>
       <!-- Кнопки — одной группой: на узком экране переносятся вместе и остаются справа. -->
       <div class="actions">
       <template v-if="canVote">
         <template v-if="idea.voted_by_me">
-          <span class="badge badge-success voted-mark"><Icon name="check" :size="13" /> Вы проголосовали</span>
+          <span class="badge badge-success voted-mark"><Icon name="check" :size="13" /> {{ t('contest.idea.voted') }}</span>
           <button
             class="btn btn-ghost btn-sm revoke-button"
             type="button"
@@ -49,7 +50,7 @@ const edited = computed(() => Boolean(props.idea.updated_at) && props.idea.updat
             @click="emit('revoke', idea)"
           >
             <span v-if="pending === 'vote'" class="spinner" aria-hidden="true" />
-            Отозвать
+            {{ t('contest.idea.revoke') }}
           </button>
         </template>
         <button
@@ -61,12 +62,12 @@ const edited = computed(() => Boolean(props.idea.updated_at) && props.idea.updat
         >
           <span v-if="pending === 'vote'" class="spinner" aria-hidden="true" />
           <Icon v-else name="vote" />
-          Голосовать
+          {{ t('contest.idea.vote') }}
         </button>
       </template>
 
       <button v-if="canEdit" class="btn btn-ghost btn-sm" type="button" :disabled="!!pending" @click="emit('edit', idea)">
-        <Icon name="edit" /> Изменить
+        <Icon name="edit" /> {{ t('contest.idea.edit') }}
       </button>
       <button
         v-if="canDelete"
@@ -77,7 +78,7 @@ const edited = computed(() => Boolean(props.idea.updated_at) && props.idea.updat
       >
         <span v-if="pending === 'delete'" class="spinner" aria-hidden="true" />
         <Icon v-else name="trash" />
-        Удалить
+        {{ t('contest.idea.delete') }}
       </button>
       </div>
     </div>

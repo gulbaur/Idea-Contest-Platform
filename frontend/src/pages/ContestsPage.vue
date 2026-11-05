@@ -13,6 +13,7 @@ import { api } from '../lib/api.js'
 import { syncServerTime } from '../lib/clock.js'
 import { useSignals } from '../lib/connection.js'
 import { SORTS, arrange, needsAction } from '../lib/contestList.js'
+import { t } from '../lib/i18n.js'
 import { isOrganizer } from '../lib/session.js'
 
 const now = useServerNow()
@@ -25,12 +26,10 @@ const sort = ref('deadline')
 const showAllFinished = ref(false)
 const FINISHED_PREVIEW = 5
 
-const FILTERS = [
-  { key: 'all', label: 'Все' },
-  { key: 'submission', label: 'Приём идей' },
-  { key: 'voting', label: 'Голосование' },
-  { key: 'finished', label: 'Завершены' },
-]
+// Подписи — computed: пересчитываются при смене языка (D-065).
+const FILTERS = computed(() =>
+  ['all', 'submission', 'voting', 'finished'].map((key) => ({ key, label: t(`contests.filter.${key}`) })),
+)
 
 async function load() {
   try {
@@ -82,9 +81,9 @@ const groups = computed(() => {
     else running.push(item)
   }
   return [
-    { key: 'action', title: 'Ждут вашего действия', items: action, accent: true },
-    { key: 'running', title: 'Идут', items: running },
-    { key: 'finished', title: 'Завершены', items: finished, limit: true },
+    { key: 'action', title: t('contests.group.action'), items: action, accent: true },
+    { key: 'running', title: t('contests.group.running'), items: running },
+    { key: 'finished', title: t('contests.group.finished'), items: finished, limit: true },
   ].filter((group) => group.items.length)
 })
 
@@ -96,13 +95,13 @@ const shown = (group) =>
   <div class="container page">
     <header class="page-header">
       <div>
-        <h1>Конкурсы</h1>
+        <h1>{{ t('contests.title') }}</h1>
         <p class="subtitle">
-          {{ organizer ? 'Все конкурсы компании — создавайте новые и следите за ходом.' : 'Конкурсы, в которых вы участвуете.' }}
+          {{ organizer ? t('contests.subtitleOrganizer') : t('contests.subtitleParticipant') }}
         </p>
       </div>
       <RouterLink v-if="organizer" class="btn btn-primary" :to="{ name: 'contest-new' }">
-        <Icon name="plus" /> Новый конкурс
+        <Icon name="plus" /> {{ t('contests.newContest') }}
       </RouterLink>
     </header>
 
@@ -110,10 +109,10 @@ const shown = (group) =>
       v-if="error"
       tone="error"
       icon="alert"
-      title="Не удалось загрузить конкурсы"
+      :title="t('contests.loadError')"
       :text="error.message"
     >
-      <button class="btn" type="button" @click="load"><Icon name="refresh" /> Повторить</button>
+      <button class="btn" type="button" @click="load"><Icon name="refresh" /> {{ t('common.retry') }}</button>
     </EmptyState>
 
     <div v-else-if="!contests" class="card list">
@@ -123,11 +122,11 @@ const shown = (group) =>
     <template v-else-if="contests.length">
       <div class="toolbar">
         <label class="search">
-          <span class="sr-only">Поиск по теме</span>
+          <span class="sr-only">{{ t('contests.searchByTopic') }}</span>
           <Icon name="search" :size="16" class="icon" />
-          <input v-model="query" class="input" type="search" placeholder="Поиск по теме" />
+          <input v-model="query" class="input" type="search" :placeholder="t('contests.searchByTopic')" />
         </label>
-        <div class="segmented" role="tablist" aria-label="Фильтр по этапу">
+        <div class="segmented" role="tablist" :aria-label="t('contests.phaseFilter')">
           <button
             v-for="item in FILTERS"
             :key="item.key"
@@ -141,9 +140,9 @@ const shown = (group) =>
           </button>
         </div>
         <label class="sort">
-          <span class="sr-only">Сортировка</span>
+          <span class="sr-only">{{ t('contests.sortLabel') }}</span>
           <select v-model="sort" class="select">
-            <option v-for="item in SORTS" :key="item.key" :value="item.key">{{ item.label }}</option>
+            <option v-for="key in SORTS" :key="key" :value="key">{{ t(`contests.sort.${key}`) }}</option>
           </select>
         </label>
       </div>
@@ -160,7 +159,7 @@ const shown = (group) =>
             <span class="faint">{{ group.items.length }}</span>
           </header>
           <div v-if="index === 0" class="columns" aria-hidden="true">
-            <span>Конкурс</span><span>Этап</span><span>Срок</span><span>{{ organizer ? 'Активность' : 'Ваше участие' }}</span><span />
+            <span>{{ t('contests.column.contest') }}</span><span>{{ t('contests.column.phase') }}</span><span>{{ t('contests.column.deadline') }}</span><span>{{ organizer ? t('contests.column.activity') : t('contests.column.participation') }}</span><span />
           </div>
           <ContestRow
             v-for="item in shown(group)"
@@ -176,34 +175,34 @@ const shown = (group) =>
             type="button"
             @click="showAllFinished = true"
           >
-            Показать все завершённые ({{ group.items.length }}) <Icon name="chevron-down" :size="16" />
+            {{ t('contests.showAllFinished', { count: group.items.length }) }} <Icon name="chevron-down" :size="16" />
           </button>
         </section>
       </div>
       <EmptyState
         v-else-if="query"
         icon="search"
-        title="Ничего не найдено"
-        :text="`Нет конкурсов, в теме которых есть «${query.trim()}».`"
+        :title="t('contests.nothingFound')"
+        :text="t('contests.nothingFoundText', { query: query.trim() })"
       >
-        <button class="btn" type="button" @click="query = ''">Сбросить поиск</button>
+        <button class="btn" type="button" @click="query = ''">{{ t('contests.resetSearch') }}</button>
       </EmptyState>
-      <EmptyState v-else icon="list" title="Нет конкурсов на этом этапе" text="Выберите другой фильтр." />
+      <EmptyState v-else icon="list" :title="t('contests.emptyPhase')" :text="t('contests.emptyPhaseText')" />
     </template>
 
     <EmptyState
       v-else-if="organizer"
       icon="bulb"
-      title="Конкурсов пока нет"
-      text="Создайте первый конкурс: тема, срок приёма идей, срок голосования и участники."
+      :title="t('contests.emptyOrganizer')"
+      :text="t('contests.emptyOrganizerText')"
     >
-      <RouterLink class="btn btn-primary" :to="{ name: 'contest-new' }"><Icon name="plus" /> Новый конкурс</RouterLink>
+      <RouterLink class="btn btn-primary" :to="{ name: 'contest-new' }"><Icon name="plus" /> {{ t('contests.newContest') }}</RouterLink>
     </EmptyState>
     <EmptyState
       v-else
       icon="inbox"
-      title="Вас пока не пригласили в конкурс"
-      text="Когда организатор включит вас в список участников, конкурс появится здесь сразу — обновлять страницу не нужно."
+      :title="t('contests.emptyParticipant')"
+      :text="t('contests.emptyParticipantText')"
     />
   </div>
 </template>

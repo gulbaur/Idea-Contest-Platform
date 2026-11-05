@@ -1,7 +1,9 @@
 // Страницы приложения и проверка доступа при переходе.
 // Это удобство интерфейса: настоящие права всё равно проверяет сервер (D-050).
+import { watch } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 
+import { locale, t } from './lib/i18n.js'
 import { isAdmin, isOrganizer, session } from './lib/session.js'
 import ContestCreatePage from './pages/ContestCreatePage.vue'
 import ContestPage from './pages/ContestPage.vue'
@@ -15,23 +17,23 @@ import SettingsPage from './pages/SettingsPage.vue'
 import SetupPasswordPage from './pages/SetupPasswordPage.vue'
 
 export const routes = [
-  { path: '/login', name: 'login', component: LoginPage, meta: { public: true, title: 'Вход' } },
+  { path: '/login', name: 'login', component: LoginPage, meta: { public: true, titleKey: 'app.pageTitle.login' } },
   // Первый вход по одноразовой ссылке (D-062): без входа.
-  { path: '/setup', name: 'setup', component: SetupPasswordPage, meta: { public: true, title: 'Задать пароль' } },
+  { path: '/setup', name: 'setup', component: SetupPasswordPage, meta: { public: true, titleKey: 'app.pageTitle.setup' } },
   { path: '/', redirect: () => (isAdmin() ? '/employees' : '/contests') },
-  { path: '/contests', name: 'contests', component: ContestsPage, meta: { title: 'Конкурсы' } },
+  { path: '/contests', name: 'contests', component: ContestsPage, meta: { titleKey: 'app.pageTitle.contests' } },
   {
     path: '/contests/new',
     name: 'contest-new',
     component: ContestCreatePage,
-    meta: { organizer: true, title: 'Новый конкурс' },
+    meta: { organizer: true, titleKey: 'app.pageTitle.contestNew' },
   },
-  { path: '/contests/:id(\\d+)', name: 'contest', component: ContestPage, props: true, meta: { title: 'Конкурс' } },
-  { path: '/mail', name: 'mail', component: MailPage, meta: { title: 'Входящие' } },
-  { path: '/journal', name: 'journal', component: JournalPage, meta: { staff: true, title: 'Журнал рассылки' } },
-  { path: '/settings', name: 'settings', component: SettingsPage, meta: { title: 'Настройки' } },
-  { path: '/employees', name: 'employees', component: EmployeesPage, meta: { admin: true, title: 'Сотрудники' } },
-  { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundPage, meta: { title: 'Не найдено' } },
+  { path: '/contests/:id(\\d+)', name: 'contest', component: ContestPage, props: true, meta: { titleKey: 'app.pageTitle.contest' } },
+  { path: '/mail', name: 'mail', component: MailPage, meta: { titleKey: 'app.pageTitle.mail' } },
+  { path: '/journal', name: 'journal', component: JournalPage, meta: { staff: true, titleKey: 'app.pageTitle.journal' } },
+  { path: '/settings', name: 'settings', component: SettingsPage, meta: { titleKey: 'app.pageTitle.settings' } },
+  { path: '/employees', name: 'employees', component: EmployeesPage, meta: { admin: true, titleKey: 'app.pageTitle.employees' } },
+  { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundPage, meta: { titleKey: 'app.pageTitle.notFound' } },
 ]
 
 export function guard(to) {
@@ -54,8 +56,15 @@ export function createAppRouter(history = createWebHistory()) {
     scrollBehavior: (to, from, saved) => saved ?? { top: 0 },
   })
   router.beforeEach(guard)
+  // Заголовок вкладки — на языке интерфейса (D-065). При смене языка он обновляется, только если его
+  // не заменила сама страница (например, тема конкурса на ContestPage).
+  let routeTitle = ''
+  const titleOf = (route) => `${route.meta.titleKey ? t(route.meta.titleKey) : t('app.brand')} — ${t('app.brand')}`
   router.afterEach((to) => {
-    document.title = `${to.meta.title ?? 'Конкурс идей'} — Конкурс идей`
+    document.title = routeTitle = titleOf(to)
+  })
+  watch(locale, () => {
+    if (document.title === routeTitle) document.title = routeTitle = titleOf(router.currentRoute.value)
   })
   return router
 }

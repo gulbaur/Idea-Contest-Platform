@@ -20,7 +20,7 @@ const THEME_OPTIONS = computed(() => [
 // Название языка — на нём самом: так его найдёт и тот, кто не читает текущий язык.
 const LOCALE_OPTIONS = [
   { value: 'ru', label: 'Русский', sample: 'Конкурс идей' },
-  { value: 'en', label: 'English', sample: 'Idea contest' },
+  { value: 'en', label: 'English', sample: 'Idea Contest' },
 ]
 const FONT_OPTIONS = computed(() => [
   { value: 'inter', label: 'Inter', hint: t('settings.font.interHint'), family: 'var(--font-inter)' },

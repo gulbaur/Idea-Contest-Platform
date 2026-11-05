@@ -4,6 +4,7 @@
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import { dialog } from '../lib/confirm.js'
+import { t } from '../lib/i18n.js'
 import Icon from './Icon.vue'
 
 defineProps({
@@ -33,7 +34,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
     <div ref="box" class="modal" :class="{ wide }" role="dialog" aria-modal="true" :aria-label="title" tabindex="-1">
       <header class="head">
         <h2>{{ title }}</h2>
-        <button class="btn btn-ghost btn-sm close" type="button" aria-label="Закрыть" @click="emit('close')">
+        <button class="btn btn-ghost btn-sm close" type="button" :aria-label="t('common.close')" @click="emit('close')">
           <Icon name="x" :size="18" />
         </button>
       </header>

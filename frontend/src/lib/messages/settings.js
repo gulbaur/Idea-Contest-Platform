@@ -57,7 +57,7 @@ export default {
     notSaved: 'Setting not saved: {error}',
     theme: {
       title: 'Theme',
-      text: 'Colour scheme of the interface.',
+      text: 'Color scheme of the interface.',
       system: 'System',
       systemHint: 'Light or dark, as set on your device',
       light: 'Light',
