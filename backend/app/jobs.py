@@ -468,14 +468,9 @@ class JobRunner:
                 return JobStatus.SKIPPED, "голосование уже завершилось", []
             sent = []
             if ideas_count:
-                # Только тем, у кого есть чужие идеи: голосовать за свою нельзя (как и в напоминании).
-                users = (
-                    await db.scalars(
-                        _participants(contest.id).where(
-                            exists().where(Idea.contest_id == contest.id, Idea.author_id != User.id)
-                        )
-                    )
-                ).all()
+                # Всем участникам, а не «тем, у кого есть чужие идеи»: иначе в журнале рассылки по
+                # тому, кому письмо не пришло, был бы виден автор (приёмка версии 2, D-058).
+                users = (await db.scalars(_participants(contest.id))).all()
                 letters = [(user, *_voting_open_text(contest, user, ideas_count)) for user in users]
                 sent = await JobRunner._send(db, contest, EmailKind.VOTING_OPEN, letters, now)
             to_organizer = await _notify_organizer(

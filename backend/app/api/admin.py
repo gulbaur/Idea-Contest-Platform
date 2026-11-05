@@ -23,6 +23,8 @@ from app.schemas import IdPath, StorableText
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 SETUP_LINK_TTL = timedelta(hours=72)
+# Роли в журнале действий — словами, а не кодами.
+ROLE_NAMES = {"admin": "администратор", "organizer": "организатор", "employee": "сотрудник"}
 _LOGIN = re.compile(r"^[a-z0-9][a-z0-9._-]{1,63}$")
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -165,9 +167,27 @@ async def revoke_access(db: AsyncSession, user: User) -> None:
     await db.execute(delete(UserSession).where(UserSession.user_id == user.id))
 
 
-async def _locked_user(db: AsyncSession, user_id: int) -> User:
-    # Блокировка строки: два администратора, меняющие одного человека, — строго по очереди.
-    # Её же ждёт создание конкурса, проверяющее участников (D-062), — см. contests.py.
+# Ключ рекомендательной блокировки PostgreSQL для всех изменений учётных записей.
+STAFF_LOCK = 0x5354_4146  # «STAF»
+
+
+async def _serialize(db: AsyncSession, actor: User) -> None:
+    """Изменения учётных записей — строго по очереди, и только действующим администратором.
+
+    Без общей блокировки два администратора, одновременно отключающие друг друга, ловили
+    взаимную блокировку строк в PostgreSQL (ответ 500), а правило «хотя бы один администратор»
+    держалось лишь случайно (приёмка версии 2). Изменения учётных записей редки — очередь не мешает.
+    Пока запрос ждал очереди, его автора могли отключить или понизить — перепроверяем.
+    """
+    await db.execute(select(func.pg_advisory_xact_lock(STAFF_LOCK)))
+    still = await db.scalar(select(User).where(User.id == actor.id).execution_options(populate_existing=True))
+    if still is None or not still.is_active or still.role != Role.ADMIN:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Действие доступно только администратору")
+
+
+async def _locked_user(db: AsyncSession, user_id: int, actor: User) -> User:
+    await _serialize(db, actor)
+    # Блокировка строки — её ждёт и создание конкурса, проверяющее участников (D-062), см. contests.py.
     user = await db.scalar(select(User).where(User.id == user_id).with_for_update())
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Сотрудник не найден")
@@ -193,6 +213,7 @@ async def invite(payload: StaffCreateIn, current: CurrentUserDep, db: DbSession,
     """Новый сотрудник без пароля + одноразовая ссылка, по которой он задаст пароль сам."""
     ensure_admin(current.user)
     now = clock.now()
+    await _serialize(db, current.user)
     if await db.scalar(select(exists().where(User.login == payload.login))):
         raise _conflict("Такой логин уже занят")
     if await db.scalar(select(exists().where(User.email == payload.email))):
@@ -208,7 +229,7 @@ async def invite(payload: StaffCreateIn, current: CurrentUserDep, db: DbSession,
     db.add(user)
     link = _issue_link(user, now)
     await db.flush()
-    audit(db, current.user, "user_invited", user, f"роль: {payload.role}", now)
+    audit(db, current.user, "user_invited", user, f"роль: {ROLE_NAMES[payload.role]}", now)
     try:
         await db.commit()
     except IntegrityError as exc:  # параллельное приглашение с тем же логином или почтой
@@ -223,7 +244,7 @@ async def update_staff(
 ) -> StaffOut:
     ensure_admin(current.user)
     now = clock.now()
-    user = await _locked_user(db, user_id)
+    user = await _locked_user(db, user_id, current.user)
     changes = []
 
     if payload.role is not None and payload.role != user.role:
@@ -239,7 +260,7 @@ async def update_staff(
                 "Роль можно сменить после завершения конкурсов, где сотрудник участвует: "
                 + ", ".join(f"«{topic}»" for topic in busy)
             )
-        changes.append(f"роль: {user.role} → {payload.role}")
+        changes.append(f"роль: {ROLE_NAMES[user.role]} → {ROLE_NAMES[payload.role]}")
         user.role = payload.role
 
     if payload.display_name is not None and payload.display_name != user.display_name:
@@ -269,7 +290,7 @@ async def disable(user_id: IdPath, current: CurrentUserDep, db: DbSession, clock
     """Доступ закрывается сразу: сессии удаляются, открытые вкладки выходят. История остаётся."""
     ensure_admin(current.user)
     now = clock.now()
-    user = await _locked_user(db, user_id)
+    user = await _locked_user(db, user_id, current.user)
     if user.id == current.user.id:
         raise _conflict("Нельзя отключить себя — попросите другого администратора")
     if user.role == Role.ADMIN and not await _other_active_admins(db, user):
@@ -289,7 +310,7 @@ async def disable(user_id: IdPath, current: CurrentUserDep, db: DbSession, clock
 async def enable(user_id: IdPath, current: CurrentUserDep, db: DbSession, clock: ClockDep) -> StaffOut:
     ensure_admin(current.user)
     now = clock.now()
-    user = await _locked_user(db, user_id)
+    user = await _locked_user(db, user_id, current.user)
     if not user.is_active:
         user.is_active = True
         audit(db, current.user, "user_enabled", user, None, now)
@@ -305,7 +326,7 @@ async def reset(user_id: IdPath, current: CurrentUserDep, db: DbSession, clock: 
     """
     ensure_admin(current.user)
     now = clock.now()
-    user = await _locked_user(db, user_id)
+    user = await _locked_user(db, user_id, current.user)
     if not user.is_active:
         raise _conflict("Доступ сотрудника отключён — сначала включите его")
     had_password = user.password_hash is not None

@@ -345,12 +345,84 @@ async def test_success_resets_failures(client):
 
 
 async def test_parallel_guessing_is_stopped(client):
+    """Из любого числа одновременных попыток пароль проверяется не больше пяти раз (приёмка версии 2)."""
     responses = await asyncio.gather(
-        *[client.post("/api/auth/login", json={"login": "gleb", "password": f"неверный-{n}"}) for n in range(12)]
+        *[client.post("/api/auth/login", json={"login": "gleb", "password": f"неверный-{n}"}) for n in range(30)]
     )
-    assert all(r.status_code in (401, 429) for r in responses)
+    codes = [r.status_code for r in responses]
+    assert set(codes) <= {401, 429}
+    assert codes.count(401) <= 5, codes
     after = await client.post("/api/auth/login", json={"login": "gleb", "password": TEST_PASSWORD})
     assert after.status_code == 429
+
+
+async def test_guessing_current_password_through_an_open_tab_is_limited(client):
+    """Смена пароля в чужой открытой вкладке — не обход ограничения: счётчик общий со входом."""
+    dina = await login(client, "dina")
+    for _ in range(5):
+        wrong = await client.post(
+            "/api/auth/password", json={"current_password": "неверный", "new_password": GOOD_PASSWORD}, headers=auth(dina)
+        )
+        assert wrong.status_code == 403
+    sixth = await client.post(
+        "/api/auth/password", json={"current_password": TEST_PASSWORD, "new_password": GOOD_PASSWORD}, headers=auth(dina)
+    )
+    assert sixth.status_code == 429
+    assert (await client.post("/api/auth/login", json={"login": "dina", "password": TEST_PASSWORD})).status_code == 429
+
+
+async def test_two_admins_disabling_each_other_at_once(client, user_ids):
+    """Действия администраторов идут по очереди: ни ошибки 500, ни сервиса без администратора."""
+    admin = await login(client, "admin")
+    second = await _invite(client, admin, "kira", role="admin")
+    kira = (await _setup(client, second["setup"]["token"])).json()["token"]
+    for _ in range(3):
+        first, other = await asyncio.gather(
+            client.post(f"/api/admin/users/{second['user']['id']}/disable", headers=auth(admin)),
+            client.post(f"/api/admin/users/{user_ids['admin']}/disable", headers=auth(kira)),
+        )
+        codes = sorted([first.status_code, other.status_code])
+        # Первый отключает второго; второй к своей очереди уже не администратор с доступом
+        # (403 — если вход ещё действовал при проверке токена, 401 — если уже нет).
+        assert codes in ([200, 401], [200, 403]), codes
+        survivor, victim = (admin, second["user"]["id"]) if first.status_code == 200 else (kira, user_ids["admin"])
+        staff = (await client.get("/api/admin/users", headers=auth(survivor))).json()
+        assert sum(1 for u in staff if u["role"] == "admin" and u["status"] != "disabled") == 1
+        # Вернуть исходное состояние для следующего круга.
+        await client.post(f"/api/admin/users/{victim}/enable", headers=auth(survivor))
+        admin = await login(client, "admin")
+        kira = await login(client, "kira", GOOD_PASSWORD)
+
+
+async def test_websocket_opened_while_being_disabled_is_closed(client, app, user_ids, ws_url, monkeypatch):
+    """Отключение в промежутке между проверкой сессии и регистрацией соединения (приёмка версии 2)."""
+    import json
+
+    from sqlalchemy import update
+    from websockets.asyncio.client import connect
+
+    from app.api import realtime as realtime_api
+
+    original = realtime_api.find_session
+    calls = 0
+
+    async def find_then_disable(db, token, now):
+        nonlocal calls
+        calls += 1
+        found = await original(db, token, now)
+        if calls == 1:  # первая проверка прошла — и сразу после неё доступ отключают
+            async with app.state.sessionmaker() as other:
+                await other.execute(update(User).where(User.id == user_ids["vera"]).values(is_active=False))
+                await other.commit()
+        return found
+
+    monkeypatch.setattr(realtime_api, "find_session", find_then_disable)
+    vera = await login(client, "vera")
+    async with connect(ws_url) as ws:
+        await ws.send(json.dumps({"type": "auth", "token": vera}))
+        await asyncio.wait_for(ws.wait_closed(), timeout=2)
+        assert ws.close_code == 4401
+    assert calls == 2  # сессия перепроверена после регистрации соединения
 
 
 # --- смена и сброс пароля --------------------------------------------------------------

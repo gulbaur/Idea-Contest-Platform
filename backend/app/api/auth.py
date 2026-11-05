@@ -103,21 +103,36 @@ def _too_many(locked_until: datetime, now: datetime) -> HTTPException:
     )
 
 
-async def _record_failure(db, key: str, now: datetime) -> None:
-    """+1 неудачная попытка; пятая подряд закрывает вход на LOCK_TIME. Атомарно для параллельных запросов."""
-    failures = await db.scalar(
-        pg_insert(LoginThrottle)
-        .values(login=key, failures=1, locked_until=None)
-        .on_conflict_do_update(index_elements=["login"], set_={"failures": LoginThrottle.failures + 1})
-        .returning(LoginThrottle.failures)
-    )
-    if failures >= MAX_FAILURES:
+async def reserve_attempt(db, key: str, now: datetime) -> None:
+    """Забронировать попытку проверки пароля ДО самой проверки (D-062, приёмка версии 2).
+
+    Счётчик увеличивается атомарно и фиксируется сразу, поэтому параллельные запросы видят
+    друг друга: из любого числа одновременных попыток пароль проверяется не больше
+    MAX_FAILURES раз, остальные сразу получают 429. Успешная проверка сбрасывает счётчик.
+    """
+    failures, locked_until = (
         await db.execute(
-            update(LoginThrottle)
-            .where(LoginThrottle.login == key)
-            .values(failures=0, locked_until=now + LOCK_TIME)
+            pg_insert(LoginThrottle)
+            .values(login=key, failures=1, locked_until=None)
+            .on_conflict_do_update(index_elements=["login"], set_={"failures": LoginThrottle.failures + 1})
+            .returning(LoginThrottle.failures, LoginThrottle.locked_until)
         )
+    ).one()
+    if locked_until is not None and locked_until > now:
+        await db.commit()
+        raise _too_many(locked_until, now)
+    if failures > MAX_FAILURES:
+        await db.execute(
+            update(LoginThrottle).where(LoginThrottle.login == key).values(failures=0, locked_until=now + LOCK_TIME)
+        )
+        await db.commit()
+        raise _too_many(now + LOCK_TIME, now)
     await db.commit()
+
+
+async def attempt_succeeded(db, key: str) -> None:
+    """Пароль верный — счётчик неудач по этому логину обнуляется (в транзакции вызывающего)."""
+    await db.execute(delete(LoginThrottle).where(LoginThrottle.login == key))
 
 
 def _new_session(db, user: User, request: Request, now: datetime) -> tuple[str, datetime]:
@@ -132,9 +147,7 @@ def _new_session(db, user: User, request: Request, now: datetime) -> tuple[str, 
 async def login(payload: LoginIn, request: Request, db: DbSession, clock: ClockDep) -> LoginOut:
     key = payload.login.strip().lower()
     now = clock.now()
-    throttle = await db.get(LoginThrottle, key)
-    if throttle is not None and throttle.locked_until is not None and throttle.locked_until > now:
-        raise _too_many(throttle.locked_until, now)
+    await reserve_attempt(db, key, now)
     user = await db.scalar(select(User).where(User.login == key))
     # Завершаем транзакцию чтения до проверки пароля: соединение возвращается в пул
     # и не простаивает десятки миллисекунд scrypt (D-038). Объект user остаётся доступен.
@@ -149,12 +162,12 @@ async def login(payload: LoginIn, request: Request, db: DbSession, clock: ClockD
         verify_password, payload.password, user.password_hash if usable else DUMMY_PASSWORD_HASH
     )
     if not (usable and password_ok):
-        await _record_failure(db, key, now)
+        # Неудача уже учтена бронированием попытки (reserve_attempt).
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверный логин или пароль"
         )
 
-    await db.execute(delete(LoginThrottle).where(LoginThrottle.login == key))
+    await attempt_succeeded(db, key)
     # Истёкшие сессии этого пользователя больше не действуют — удаляем их при входе,
     # чтобы таблица не росла бесконечно (D-059). Поиск по user_id идёт по индексу.
     await db.execute(
@@ -283,16 +296,21 @@ async def change_password(
 ) -> Response:
     """Смена пароля с вводом текущего. Остальные вкладки и устройства выходят, эта — остаётся."""
     user = current.user
-    current_ok = await asyncio.to_thread(
-        verify_password, payload.current_password, user.password_hash or DUMMY_PASSWORD_HASH
-    )
-    if not current_ok:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Текущий пароль указан неверно")
+    # Сначала правила нового пароля: неудачный выбор нового пароля не тратит попытки.
     problem = password_problem(payload.new_password, user.login)
     if problem:
         raise _invalid_password(problem)
     if payload.new_password == payload.current_password:
         raise _invalid_password("Новый пароль совпадает с текущим")
+    # Подбор текущего пароля через чужую открытую вкладку ограничен тем же счётчиком, что и вход:
+    # у пароля одна «квота» неудачных попыток, по какому бы каналу его ни подбирали.
+    await reserve_attempt(db, user.login, clock.now())
+    current_ok = await asyncio.to_thread(
+        verify_password, payload.current_password, user.password_hash or DUMMY_PASSWORD_HASH
+    )
+    if not current_ok:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Текущий пароль указан неверно")
+    await attempt_succeeded(db, user.login)
     new_hash = await asyncio.to_thread(hash_password, payload.new_password)
     now = clock.now()
     locked = await db.scalar(select(User).where(User.id == user.id).with_for_update())

@@ -641,4 +641,9 @@ async def test_schedule_signal_goes_only_to_organizers(client, app, t, cid, cloc
     while (message := await org.next()) != {"type": "pong"}:
         received.append(message)
     assert {"type": "schedule_changed", "contest_id": cid} in received
-    await anna.expect_nothing()  # anna — автор единственной идеи: писем и сигналов ей нет
+    # Анне — только сигнал о её письме «голосование открыто» (D-063, D-064), сигнала о расписании нет.
+    anna_received = []
+    await anna.ws.send('{"type": "ping"}')
+    while (message := await anna.next()) != {"type": "pong"}:
+        anna_received.append(message)
+    assert anna_received == [{"type": "mail_changed"}]

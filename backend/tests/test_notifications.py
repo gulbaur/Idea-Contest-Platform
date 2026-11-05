@@ -66,14 +66,14 @@ async def test_participants_are_invited_when_contest_is_created(client, app, t, 
     assert kinds == {"contests_changed", "mail_changed"}
 
 
-async def test_voting_open_goes_to_those_who_have_someone_to_vote_for(client, app, t, cid, clock, user_ids):
+async def test_voting_open_goes_to_every_participant(client, app, t, cid, clock, user_ids):
+    """Всем участникам, включая автора единственной идеи: иначе по журналу был бы виден автор."""
     await submit_idea(client, t["anna"], cid, "Единственная идея")
     clock.set(SUB_END)
     outcomes = {o.kind: o for o in await app.state.jobs.run_due()}
     assert outcomes["open_voting"].status == "done"
 
-    # Анне голосовать не за что: единственная идея — её собственная.
-    assert logins(await letters(app, kind="voting_open"), user_ids) == {"boris", "vera", "gleb"}
+    assert logins(await letters(app, kind="voting_open"), user_ids) == set(PARTICIPANTS)
     [closed] = await letters(app, kind="org_submission_closed")
     assert closed.recipient_id == user_ids["organizer"]
     assert "подано 1 идея" in closed.body
@@ -186,3 +186,23 @@ async def test_journal_is_for_organizer_and_admin_with_search(client, t, cid):
     final_only = await client.get("/api/emails/journal", params={"kind": "final"}, headers=auth(t["admin"]))
     assert final_only.json() == []
     assert (await client.get("/api/emails/journal", headers=auth(t["anna"]))).status_code == 403
+
+
+
+async def test_journal_never_points_at_authors_before_final(client, app, t, cid, clock, user_ids):
+    """Анонимность журнала (D-058, приёмка версии 2): до финала у каждого вида письма в журнале
+    получатели — либо все участники, либо только организатор. Иначе по тому, кому письмо
+    пришло или не пришло, можно вычислить, кто подавал идеи и кто голосовал."""
+    await submit_idea(client, t["anna"], cid, "Идея Анны")  # все идеи — от одного автора
+    await submit_idea(client, t["anna"], cid, "Ещё идея Анны")
+    for moment in (SUB_END - DAY, SUB_END, VOTE_END - DAY):
+        clock.set(moment)
+        await app.state.jobs.run_due()
+        for who in ("organizer", "admin"):
+            journal = (await client.get("/api/emails/journal", params={"contest_id": cid}, headers=auth(t[who]))).json()
+            by_kind: dict[str, set[int]] = {}
+            for letter in journal:
+                by_kind.setdefault(letter["kind"], set()).add(letter["recipient"]["id"])
+            everyone = {user_ids[u] for u in PARTICIPANTS}
+            for kind, recipients in by_kind.items():
+                assert recipients in (everyone, {user_ids["organizer"]}), (moment, kind, recipients)

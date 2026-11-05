@@ -62,6 +62,12 @@ async def realtime(websocket: WebSocket) -> None:
         session_id=session.id,
         expires_at=session.expires_at,
     )
+    # Между проверкой сессии и регистрацией соединения сотрудника могли отключить — тогда
+    # hub.close_user это соединение ещё не видел. Перепроверка после регистрации закрывает окно.
+    async with app.state.sessionmaker() as db:
+        still_valid = await find_session(db, token, clock.now())
+    if still_valid is None:
+        connection.close(CLOSE_UNAUTHORIZED)
     connection.send(
         {"type": "ready", "user_id": user.id, "server_time": clock.now().isoformat()}
     )
