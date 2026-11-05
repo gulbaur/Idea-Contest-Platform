@@ -214,6 +214,17 @@ describe('создание конкурса', () => {
     expect(api.createContest).not.toHaveBeenCalled()
   })
 
+  it('поиск участников: «Выбрать найденных» не трогает остальных', async () => {
+    await openForm()
+    await button(wrapper, 'Снять все').trigger('click')
+    await wrapper.find('input[type="search"]').setValue('котов')
+    expect(wrapper.findAll('.person strong').map((n) => n.text())).toEqual(['Борис Котов'])
+    await button(wrapper, 'Выбрать найденных').trigger('click')
+    await wrapper.find('input[type="search"]').setValue('')
+    expect(wrapper.text()).toContain('выбрано 1 из 2')
+    expect(wrapper.findAll('.person input').map((input) => input.element.checked)).toEqual([false, true])
+  })
+
   it('отправляет сроки в UTC и выбранных участников после подтверждения; повтор — тот же запрос', async () => {
     await openForm()
     await wrapper.find('#topic').setValue('  Обеды  ')

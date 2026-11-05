@@ -64,7 +64,19 @@ onMounted(() => {
   loadEmployees()
 })
 
-const allSelected = computed(() => employees.value?.length && selected.value.size === employees.value.length)
+// Поиск по имени и логину (D-062): когда сотрудников много, список длинный.
+// «Выбрать всех» при поиске выбирает (или снимает) только найденных.
+const peopleQuery = ref('')
+const shownEmployees = computed(() => {
+  const needle = peopleQuery.value.trim().toLocaleLowerCase('ru')
+  if (!needle) return employees.value ?? []
+  return (employees.value ?? []).filter((person) =>
+    [person.display_name, person.login].some((text) => text.toLocaleLowerCase('ru').includes(needle)),
+  )
+})
+const allSelected = computed(
+  () => shownEmployees.value.length > 0 && shownEmployees.value.every((person) => selected.value.has(person.id)),
+)
 
 function toggle(id) {
   const next = new Set(selected.value)
@@ -74,7 +86,12 @@ function toggle(id) {
 }
 
 function toggleAll() {
-  selected.value = allSelected.value ? new Set() : new Set(employees.value.map((person) => person.id))
+  const next = new Set(selected.value)
+  for (const person of shownEmployees.value) {
+    if (allSelected.value) next.delete(person.id)
+    else next.add(person.id)
+  }
+  selected.value = next
 }
 
 const submissionIso = computed(() => localInputToIso(submissionInput.value))
@@ -259,9 +276,14 @@ async function submit() {
           <span v-if="employees" class="faint">выбрано {{ selected.size }} из {{ employees.length }}</span>
           <span class="spacer" />
           <button v-if="employees?.length" class="btn btn-ghost btn-sm" type="button" @click="toggleAll">
-            {{ allSelected ? 'Снять все' : 'Выбрать всех' }}
+            {{ peopleQuery.trim() ? (allSelected ? 'Снять найденных' : 'Выбрать найденных') : allSelected ? 'Снять все' : 'Выбрать всех' }}
           </button>
         </div>
+        <label v-if="employees?.length" class="search people-search">
+          <span class="sr-only">Поиск сотрудника</span>
+          <Icon name="search" :size="16" class="icon" />
+          <input v-model="peopleQuery" class="input" type="search" placeholder="Найти по имени или логину" />
+        </label>
 
         <EmptyState v-if="employeesError" tone="error" icon="alert" title="Не удалось загрузить сотрудников" :text="employeesError.message">
           <button class="btn" type="button" @click="loadEmployees"><Icon name="refresh" /> Повторить</button>
@@ -270,7 +292,7 @@ async function submit() {
           <div v-for="n in 4" :key="n" class="skeleton" style="height: 44px" />
         </div>
         <div v-else class="people">
-          <label v-for="person in employees" :key="person.id" class="person" :class="{ on: selected.has(person.id) }">
+          <label v-for="person in shownEmployees" :key="person.id" class="person" :class="{ on: selected.has(person.id) }">
             <input type="checkbox" :checked="selected.has(person.id)" :disabled="pending" @change="toggle(person.id)" />
             <span>
               <strong>{{ person.display_name }}</strong>
@@ -329,6 +351,10 @@ async function submit() {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 8px;
+}
+
+.people-search {
+  margin-bottom: 12px;
 }
 
 .person {
