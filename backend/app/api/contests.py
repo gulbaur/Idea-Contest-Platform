@@ -216,18 +216,100 @@ async def create_contest(
     return _summary(contest, now)
 
 
-@router.get("/contests", response_model=list[ContestSummary])
-async def list_contests(current: CurrentUserDep, db: DbSession, clock: ClockDep) -> list[ContestSummary]:
-    """Организатор видит все конкурсы, сотрудник — только те, где он участник."""
+class ListStats(BaseModel):
+    """Счётчики строки списка для организатора — те же, что в статистике конкурса (F8)."""
+
+    participants_count: int
+    ideas_count: int
+    # Число проголосовавших — только с начала голосования, как на экране конкурса.
+    voters_count: int | None
+
+
+class MyParticipation(BaseModel):
+    """Участие текущего сотрудника — только его собственные действия (D-061)."""
+
+    ideas_count: int
+    votes_count: int
+    # Есть ли за кого голосовать (чужие идеи). Только во время голосования, иначе false:
+    # во время подачи даже число чужих идей участнику не раскрывается (D-005).
+    can_vote: bool
+
+
+class ContestListItem(ContestSummary):
+    stats: ListStats | None = None  # только организатору
+    my: MyParticipation | None = None  # только участнику
+
+
+async def _counts(db: AsyncSession, statement) -> dict[int, int]:
+    return dict((await db.execute(statement)).all())
+
+
+@router.get("/contests", response_model=list[ContestListItem])
+async def list_contests(current: CurrentUserDep, db: DbSession, clock: ClockDep) -> list[ContestListItem]:
+    """Организатор видит все конкурсы, сотрудник — только те, где он участник.
+
+    Счётчики считаются несколькими групповыми запросами на весь список, а не запросом
+    на каждый конкурс (D-061). Что видно, решают те же правила, что и для снимка.
+    """
+    user = current.user
+    is_organizer = user.role == Role.ORGANIZER
+    # Все запросы видят одно состояние БД, как и снимок конкурса.
+    await db.connection(execution_options={"isolation_level": "REPEATABLE READ"})
     statement = select(Contest).order_by(Contest.created_at.desc(), Contest.id.desc())
-    if current.user.role != Role.ORGANIZER:
+    if not is_organizer:
         statement = statement.join(
             ContestParticipant,
-            (ContestParticipant.contest_id == Contest.id)
-            & (ContestParticipant.user_id == current.user.id),
+            (ContestParticipant.contest_id == Contest.id) & (ContestParticipant.user_id == user.id),
         )
+    contests = (await db.scalars(statement)).all()
     now = clock.now()
-    return [_summary(c, now) for c in (await db.scalars(statement)).all()]
+    if not contests:
+        return []
+    ids = [c.id for c in contests]
+
+    def per_contest(column, *conditions):
+        return select(column, func.count()).where(column.in_(ids), *conditions).group_by(column)
+
+    items = []
+    if is_organizer:
+        participants = await _counts(db, per_contest(ContestParticipant.contest_id))
+        ideas = await _counts(db, per_contest(Idea.contest_id))
+        voters = await _counts(
+            db,
+            select(Vote.contest_id, func.count(func.distinct(Vote.voter_id)))
+            .where(Vote.contest_id.in_(ids))
+            .group_by(Vote.contest_id),
+        )
+        for contest in contests:
+            summary = _summary(contest, now)
+            items.append(
+                ContestListItem(
+                    **summary.model_dump(),
+                    stats=ListStats(
+                        participants_count=participants.get(contest.id, 0),
+                        ideas_count=ideas.get(contest.id, 0),
+                        voters_count=None if summary.phase == Phase.SUBMISSION else voters.get(contest.id, 0),
+                    ),
+                )
+            )
+        return items
+
+    my_ideas = await _counts(db, per_contest(Idea.contest_id, Idea.author_id == user.id))
+    my_votes = await _counts(db, per_contest(Vote.contest_id, Vote.voter_id == user.id))
+    others = await _counts(db, per_contest(Idea.contest_id, Idea.author_id != user.id))
+    for contest in contests:
+        summary = _summary(contest, now)
+        items.append(
+            ContestListItem(
+                **summary.model_dump(),
+                my=MyParticipation(
+                    ideas_count=my_ideas.get(contest.id, 0),
+                    votes_count=my_votes.get(contest.id, 0),
+                    can_vote=summary.phase == Phase.VOTING and others.get(contest.id, 0) > 0,
+                ),
+            )
+        )
+    return items
 
 
 @router.get("/contests/{contest_id}", response_model=ContestSnapshot)

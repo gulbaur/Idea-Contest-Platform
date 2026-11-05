@@ -125,7 +125,7 @@ describe('список конкурсов', () => {
     api.contests.mockResolvedValue(contests)
     ;({ wrapper } = await mountAt('/contests'))
 
-    const topics = () => wrapper.findAll('.contest-card h3').map((h) => h.text())
+    const topics = () => wrapper.findAll('.contest-row h3').map((h) => h.text())
     expect(topics()).toEqual(['Идёт голосование', 'Новый', 'Прошлый'])
     expect(wrapper.text()).toContain('Новый конкурс')
 
@@ -142,7 +142,43 @@ describe('список конкурсов', () => {
 
     realtime.emit({ type: 'contests_changed' })
     await flushPromises()
-    expect(wrapper.findAll('.contest-card h3').map((h) => h.text())).toEqual(['Новый'])
+    expect(wrapper.findAll('.contest-row h3').map((h) => h.text())).toEqual(['Новый'])
+  })
+
+  it('участнику сверху — «Ждут вашего действия»; в строке — его участие', async () => {
+    signIn(USERS.anna)
+    api.contests.mockResolvedValue([
+      { ...contests[1], my: { ideas_count: 2, votes_count: 0, can_vote: false } },
+      { ...contests[2], my: { ideas_count: 0, votes_count: 0, can_vote: true } },
+      { ...contests[0], my: { ideas_count: 1, votes_count: 3, can_vote: false } },
+    ])
+    ;({ wrapper } = await mountAt('/contests'))
+
+    const groups = wrapper.findAll('section.list').map((section) => ({
+      title: section.find('h2').text(),
+      topics: section.findAll('.contest-row h3').map((h) => h.text()),
+    }))
+    expect(groups).toEqual([
+      { title: 'Ждут вашего действия', topics: ['Идёт голосование'] },
+      { title: 'Идут', topics: ['Новый'] },
+      { title: 'Завершены', topics: ['Прошлый'] },
+    ])
+    expect(wrapper.text()).toContain('Нужно проголосовать')
+    expect(wrapper.text()).toContain('Вы подали 2 идеи')
+  })
+
+  it('поиск по теме; если ничего нет — пояснение и сброс', async () => {
+    signIn(USERS.organizer)
+    api.contests.mockResolvedValue(contests)
+    ;({ wrapper } = await mountAt('/contests'))
+
+    await wrapper.find('input[type="search"]').setValue('голосов')
+    expect(wrapper.findAll('.contest-row h3').map((h) => h.text())).toEqual(['Идёт голосование'])
+
+    await wrapper.find('input[type="search"]').setValue('обеды')
+    expect(wrapper.text()).toContain('Ничего не найдено')
+    await button(wrapper, 'Сбросить поиск').trigger('click')
+    expect(wrapper.findAll('.contest-row')).toHaveLength(3)
   })
 
   it('ошибка загрузки — сообщение и «Повторить»', async () => {

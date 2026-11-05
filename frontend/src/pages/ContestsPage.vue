@@ -1,21 +1,29 @@
 <script setup>
-// Список конкурсов: организатору — все, участнику — только те, где он в списке (сервер).
-import { computed, onMounted, ref } from 'vue'
+// Список конкурсов (D-061): вертикальный список строк с этапом, сроком и участием.
+// Организатору — все конкурсы, участнику — только те, где он в списке (решает сервер).
+// Участнику сверху — «Ждут вашего действия»; поиск, фильтр по этапу и сортировка — здесь же.
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 
-import ContestCard from '../components/ContestCard.vue'
+import ContestRow from '../components/ContestRow.vue'
 import EmptyState from '../components/EmptyState.vue'
 import Icon from '../components/Icon.vue'
 import { useServerNow } from '../composables/useServerNow.js'
 import { api } from '../lib/api.js'
-import { phaseAt, syncServerTime } from '../lib/clock.js'
+import { syncServerTime } from '../lib/clock.js'
 import { useSignals } from '../lib/connection.js'
+import { SORTS, arrange, needsAction } from '../lib/contestList.js'
 import { isOrganizer } from '../lib/session.js'
 
 const now = useServerNow()
+const organizer = computed(isOrganizer)
 const contests = ref(null)
 const error = ref(null)
 const filter = ref('all')
+const query = ref('')
+const sort = ref('deadline')
+const showAllFinished = ref(false)
+const FINISHED_PREVIEW = 5
 
 const FILTERS = [
   { key: 'all', label: 'Все' },
@@ -35,28 +43,53 @@ async function load() {
   }
 }
 
-// Новый конкурс, наступивший срок, восстановление связи — перечитать список.
+// Счётчики в строках меняются от действий всех участников. Чтобы не перечитывать список
+// на каждый голос, сигналы объединяются: не чаще раза в секунду.
+let pending = null
+function loadSoon() {
+  if (!pending) pending = setTimeout(() => ((pending = null), load()), 1000)
+}
+onBeforeUnmount(() => clearTimeout(pending))
+
 useSignals((message) => {
   if (['contests_changed', 'phase_changed', 'resync'].includes(message.type)) load()
+  else if (message.type === 'contest_changed') loadSoon()
 })
 onMounted(load)
 
-const withPhase = computed(() =>
-  (contests.value ?? []).map((contest) => ({ contest, phase: phaseAt(contest, now.value) })),
-)
 const counts = computed(() => {
-  const result = { all: withPhase.value.length, submission: 0, voting: 0, finished: 0 }
-  for (const item of withPhase.value) result[item.phase] += 1
+  const result = { all: 0, submission: 0, voting: 0, finished: 0 }
+  for (const item of arrange(contests.value ?? [], now.value)) {
+    result.all += 1
+    result[item.phase] += 1
+  }
   return result
 })
-// Сначала идущие конкурсы, затем завершённые; внутри — как вернул сервер (новые сверху).
-const visible = computed(() => {
-  const order = { voting: 0, submission: 1, finished: 2 }
-  return withPhase.value
-    .filter((item) => filter.value === 'all' || item.phase === filter.value)
-    .sort((a, b) => order[a.phase] - order[b.phase])
-    .map((item) => item.contest)
+
+const visible = computed(() =>
+  arrange(contests.value ?? [], now.value, { query: query.value, phase: filter.value, sort: sort.value }),
+)
+
+// Группы — только в общем виде; при выбранном этапе — один плоский список.
+const groups = computed(() => {
+  if (filter.value !== 'all') return [{ key: 'flat', title: null, items: visible.value }]
+  const action = []
+  const running = []
+  const finished = []
+  for (const item of visible.value) {
+    if (needsAction(item.contest, item.phase, organizer.value)) action.push(item)
+    else if (item.phase === 'finished') finished.push(item)
+    else running.push(item)
+  }
+  return [
+    { key: 'action', title: 'Ждут вашего действия', items: action, accent: true },
+    { key: 'running', title: 'Идут', items: running },
+    { key: 'finished', title: 'Завершены', items: finished, limit: true },
+  ].filter((group) => group.items.length)
 })
+
+const shown = (group) =>
+  group.limit && !showAllFinished.value && !query.value ? group.items.slice(0, FINISHED_PREVIEW) : group.items
 </script>
 
 <template>
@@ -65,10 +98,10 @@ const visible = computed(() => {
       <div>
         <h1>Конкурсы</h1>
         <p class="subtitle">
-          {{ isOrganizer() ? 'Все конкурсы компании — создавайте новые и следите за ходом.' : 'Конкурсы, в которых вы участвуете.' }}
+          {{ organizer ? 'Все конкурсы компании — создавайте новые и следите за ходом.' : 'Конкурсы, в которых вы участвуете.' }}
         </p>
       </div>
-      <RouterLink v-if="isOrganizer()" class="btn btn-primary" :to="{ name: 'contest-new' }">
+      <RouterLink v-if="organizer" class="btn btn-primary" :to="{ name: 'contest-new' }">
         <Icon name="plus" /> Новый конкурс
       </RouterLink>
     </header>
@@ -83,34 +116,83 @@ const visible = computed(() => {
       <button class="btn" type="button" @click="load"><Icon name="refresh" /> Повторить</button>
     </EmptyState>
 
-    <div v-else-if="!contests" class="grid">
-      <div v-for="n in 3" :key="n" class="skeleton" style="height: 150px; border-radius: 18px" />
+    <div v-else-if="!contests" class="card list">
+      <div v-for="n in 4" :key="n" class="skeleton loading-row" />
     </div>
 
     <template v-else-if="contests.length">
-      <div class="filters" role="tablist" aria-label="Фильтр по этапу">
-        <button
-          v-for="item in FILTERS"
-          :key="item.key"
-          class="filter"
-          :class="{ active: filter === item.key }"
-          type="button"
-          role="tab"
-          :aria-selected="filter === item.key"
-          @click="filter = item.key"
-        >
-          {{ item.label }} <span class="count">{{ counts[item.key] }}</span>
-        </button>
+      <div class="toolbar">
+        <label class="search">
+          <span class="sr-only">Поиск по теме</span>
+          <Icon name="search" :size="16" class="icon" />
+          <input v-model="query" class="input" type="search" placeholder="Поиск по теме" />
+        </label>
+        <div class="segmented" role="tablist" aria-label="Фильтр по этапу">
+          <button
+            v-for="item in FILTERS"
+            :key="item.key"
+            :class="{ active: filter === item.key }"
+            type="button"
+            role="tab"
+            :aria-selected="filter === item.key"
+            @click="filter = item.key"
+          >
+            {{ item.label }} <span class="count">{{ counts[item.key] }}</span>
+          </button>
+        </div>
+        <label class="sort">
+          <span class="sr-only">Сортировка</span>
+          <select v-model="sort" class="select">
+            <option v-for="item in SORTS" :key="item.key" :value="item.key">{{ item.label }}</option>
+          </select>
+        </label>
       </div>
 
-      <div v-if="visible.length" class="grid">
-        <ContestCard v-for="contest in visible" :key="contest.id" :contest="contest" :now="now" />
+      <div v-if="visible.length" class="stack">
+        <section
+          v-for="(group, index) in groups"
+          :key="group.key"
+          class="card list"
+          :class="{ accent: group.accent }"
+        >
+          <header v-if="group.title" class="group-head">
+            <h2 class="overline">{{ group.title }}</h2>
+            <span class="faint">{{ group.items.length }}</span>
+          </header>
+          <div v-if="index === 0" class="columns" aria-hidden="true">
+            <span>Конкурс</span><span>Этап</span><span>Срок</span><span>{{ organizer ? 'Активность' : 'Ваше участие' }}</span><span />
+          </div>
+          <ContestRow
+            v-for="item in shown(group)"
+            :key="item.contest.id"
+            :contest="item.contest"
+            :phase="item.phase"
+            :now="now"
+            :organizer="organizer"
+          />
+          <button
+            v-if="group.limit && !query && !showAllFinished && group.items.length > FINISHED_PREVIEW"
+            class="btn btn-ghost btn-sm more"
+            type="button"
+            @click="showAllFinished = true"
+          >
+            Показать все завершённые ({{ group.items.length }}) <Icon name="chevron-down" :size="16" />
+          </button>
+        </section>
       </div>
+      <EmptyState
+        v-else-if="query"
+        icon="search"
+        title="Ничего не найдено"
+        :text="`Нет конкурсов, в теме которых есть «${query.trim()}».`"
+      >
+        <button class="btn" type="button" @click="query = ''">Сбросить поиск</button>
+      </EmptyState>
       <EmptyState v-else icon="list" title="Нет конкурсов на этом этапе" text="Выберите другой фильтр." />
     </template>
 
     <EmptyState
-      v-else-if="isOrganizer()"
+      v-else-if="organizer"
       icon="bulb"
       title="Конкурсов пока нет"
       text="Создайте первый конкурс: тема, срок приёма идей, срок голосования и участники."
@@ -127,68 +209,85 @@ const visible = computed(() => {
 </template>
 
 <style scoped>
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 16px;
-}
-
-.filters {
-  /* Одна строка: на узком экране фильтры прокручиваются вбок, а не переносятся. */
-  display: inline-flex;
-  max-width: 100%;
-  overflow-x: auto;
-  scrollbar-width: none;
-  gap: 4px;
-  margin-bottom: 18px;
-  padding: 4px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-}
-
-.filter {
-  display: inline-flex;
-  flex: none;
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  white-space: nowrap;
-  gap: 7px;
-  padding: 7px 12px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-2);
-  font: inherit;
-  font-weight: 600;
-  font-size: var(--text-md);
-  cursor: pointer;
+  gap: 10px;
+  margin-bottom: 16px;
 }
 
-.filter:hover {
-  background: var(--surface-hover);
+.toolbar .search {
+  flex: 1 1 240px;
+  max-width: 360px;
 }
 
-.filter.active {
-  background: var(--primary-soft);
-  color: var(--primary-text);
+.sort {
+  margin-left: auto;
 }
 
-.count {
-  min-width: 20px;
-  padding: 0 6px;
-  border-radius: 999px;
+.sort .select {
+  width: auto;
+}
+
+/* Колонки строк задаются здесь один раз — заголовок и строки совпадают. */
+.list {
+  --contest-columns: minmax(0, 2.2fr) minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 1.3fr) 18px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.list.accent {
+  border-color: color-mix(in srgb, var(--warning) 45%, var(--border));
+}
+
+.group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 12px 20px 10px;
+}
+
+.list.accent .overline {
+  color: var(--warning);
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: var(--contest-columns);
+  gap: 20px;
+  padding: 8px 16px 8px 20px;
+  border-top: 1px solid var(--border);
   background: var(--surface-2);
+  color: var(--text-3);
   font-size: var(--text-xs);
-  text-align: center;
+  font-weight: 500;
 }
 
-.filter.active .count {
-  background: var(--surface);
+.more {
+  width: 100%;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  min-height: 40px;
 }
 
-@media (max-width: 400px) {
-  .grid {
-    grid-template-columns: minmax(0, 1fr);
+.loading-row {
+  height: 64px;
+  margin: 12px 16px;
+}
+
+@media (max-width: 760px) {
+  .columns {
+    display: none;
+  }
+
+  .toolbar .search {
+    max-width: none;
+    flex-basis: 100%;
+  }
+
+  .sort {
+    margin-left: 0;
   }
 }
 </style>
