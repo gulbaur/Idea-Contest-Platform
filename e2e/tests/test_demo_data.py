@@ -142,7 +142,7 @@ def test_finished_demo_letters_and_who_can_read_them(people, api):
     winner_subject = f"Ваша идея победила в конкурсе «{DEMO_FINISHED}»"
 
     boris = people("boris").tab()
-    boris.get_by_role("link", name="Почта").click()
+    boris.get_by_role("link", name="Входящие").click()
     letter = boris.locator("button[data-letter-id]").filter(has_text=winner_subject)
     expect(letter).to_have_count(1)
     letter.click()
@@ -150,11 +150,13 @@ def test_finished_demo_letters_and_who_can_read_them(people, api):
     expect(body).to_contain_text("1. Предзаказ обедов через чат-бот — 2 голоса — автор: Борис Котов")
     expect(body).to_contain_text("При равенстве голосов побеждает идея, поданная раньше.")
 
-    # Участник видит только свои письма, организатор — все.
+    # Во «Входящих» — только свои письма; в журнале рассылки организатора — все (D-063).
     boris_mail = api("boris").emails()
     assert boris_mail and {m["recipient"]["id"] for m in boris_mail} == {api("boris").id}
-    recipients = {m["recipient"]["id"] for m in api("organizer").emails(contest["id"])}
-    assert len(recipients) == 4
+    organizer_inbox = api("organizer").emails(contest["id"])
+    assert {m["recipient"]["id"] for m in organizer_inbox} == {api("organizer").id}
+    recipients = {m["recipient"]["id"] for m in api("organizer").journal(contest["id"])}
+    assert len(recipients - {api("organizer").id}) == 4
     gleb_kinds = {m["kind"] for m in api("gleb").emails(contest["id"])}
     assert {"reminder_submission", "final"} <= gleb_kinds  # Глеб так и не подал идею
 

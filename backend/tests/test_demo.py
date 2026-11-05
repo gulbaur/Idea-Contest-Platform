@@ -87,13 +87,25 @@ async def test_finished_demo_tie_is_won_by_the_earlier_idea(client, demo, app):
     ]
 
 
+def participants(phase: str) -> set[str]:
+    index = ("finished", "voting", "submission").index(phase)
+    return set(DEMO_CONTESTS[index].participants)
+
+
 async def test_finished_demo_letters_follow_the_real_rules(client, demo, app):
+    everyone = participants("finished")
     assert await letters(app, demo["finished"]) == {
+        "invitation": everyone,
         # Анна подала идеи уже после напоминания, Глеб не подал совсем.
         "reminder_submission": {"anna", "gleb"},
+        "voting_open": everyone,  # у каждого есть чужие идеи
         # Глеб проголосовал только после напоминания.
         "reminder_voting": {"gleb"},
-        "final": {"anna", "boris", "vera", "gleb"},
+        "final": everyone | {"organizer"},
+        # Организатору — сводки числами (D-063).
+        "org_submission_soon": {"organizer"},
+        "org_submission_closed": {"organizer"},
+        "org_voting_soon": {"organizer"},
     }
     assert set((await job_statuses(app, demo["finished"])).values()) == {"done"}
     boris = await login(client, "boris")
@@ -122,9 +134,16 @@ async def test_voting_demo_hides_authors_and_waits_for_votes(client, demo, app):
         "votes_count": 4,
     }
     assert not any(name in org_response.text for name in NAMES)
-    assert await letters(app, demo["voting"]) == {"reminder_submission": {"gleb", "dina"}}
+    assert await letters(app, demo["voting"]) == {
+        "invitation": participants("voting"),
+        "reminder_submission": {"gleb", "dina"},
+        "voting_open": participants("voting"),
+        "org_submission_soon": {"organizer"},
+        "org_submission_closed": {"organizer"},
+    }
     assert await job_statuses(app, demo["voting"]) == {
         "remind_submission": "done",
+        "open_voting": "done",
         "remind_voting": "pending",
         "finalize": "pending",
     }
@@ -142,7 +161,7 @@ async def test_submission_demo_shows_each_participant_only_own_ideas(client, dem
     org = await login(client, "organizer")
     org_snap = (await snapshot(client, org, demo["submission"])).json()
     assert (org_snap["ideas"], org_snap["stats"]["ideas_count"]) == ([], 3)
-    assert await letters(app, demo["submission"]) == {}
+    assert await letters(app, demo["submission"]) == {"invitation": participants("submission")}
 
     dina = await login(client, "dina")  # не участвует
     assert (await snapshot(client, dina, demo["submission"])).status_code == 404

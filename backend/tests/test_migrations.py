@@ -67,7 +67,7 @@ def test_migration_0004_plans_jobs_for_contests_created_before_it(database_url):
         return [tuple(r) for r in rows]
 
     asyncio.run(seed())
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, "0004")
 
     assert asyncio.run(jobs()) == [
         (1, "finalize", "2026-01-07 00:00", "pending", None, False),
@@ -76,4 +76,13 @@ def test_migration_0004_plans_jobs_for_contests_created_before_it(database_url):
         (2, "finalize", "2026-01-01 02:00", "pending", None, False),
         (2, "remind_submission", "2025-12-31 01:00", "skipped", "раунд короче срока напоминания", True),
         (2, "remind_voting", "2025-12-31 02:00", "skipped", "раунд короче срока напоминания", True),
+    ]
+
+    # 0007 (D-063): уже созданным конкурсам — задание «голосование открыто». Эти конкурсы в прошлом,
+    # приём идей давно закончился — задание сразу пропущено, письма задним числом не уходят.
+    command.upgrade(cfg, "head")
+    opened = [row for row in asyncio.run(jobs()) if row[1] == "open_voting"]
+    assert opened == [
+        (1, "open_voting", "2026-01-04 00:00", "skipped", "конкурс создан до появления этого письма", True),
+        (2, "open_voting", "2026-01-01 01:00", "skipped", "конкурс создан до появления этого письма", True),
     ]

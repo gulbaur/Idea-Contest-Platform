@@ -5,7 +5,9 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 
 import { ROLE_LABELS } from '../lib/format.js'
-import { isAdmin, session } from '../lib/session.js'
+import { useSignals } from '../lib/connection.js'
+import { isAdmin, isOrganizer, session } from '../lib/session.js'
+import { refreshUnread, unread } from '../lib/unread.js'
 import ConnectionStatus from './ConnectionStatus.vue'
 import Icon from './Icon.vue'
 
@@ -28,8 +30,18 @@ const sections = computed(() => [
   ...(isAdmin()
     ? [{ to: '/employees', label: 'Сотрудники', icon: 'users', active: route.path.startsWith('/employees') }]
     : [{ to: '/contests', label: 'Конкурсы', icon: 'list', active: route.path.startsWith('/contests') }]),
-  { to: '/mail', label: 'Почта', icon: 'mail', active: route.path.startsWith('/mail') },
+  { to: '/mail', label: 'Входящие', icon: 'inbox', active: route.path.startsWith('/mail'), badge: unread.count },
+  // Технический журнал всех писем — отдельно от личных «Входящих» (D-063).
+  ...(isAdmin() || isOrganizer()
+    ? [{ to: '/journal', label: 'Журнал рассылки', icon: 'mail', active: route.path.startsWith('/journal') }]
+    : []),
 ])
+
+// Счётчик непрочитанных: при входе, при новом письме и после восстановления связи.
+onMounted(refreshUnread)
+useSignals((message) => {
+  if (message.type === 'mail_changed' || message.type === 'resync') refreshUnread()
+})
 
 // Переход по ссылке закрывает меню на узком экране.
 watch(() => route.fullPath, () => (open.value = false))
@@ -71,6 +83,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       >
         <Icon :name="item.icon" :size="18" />
         <span>{{ item.label }}</span>
+        <span v-if="item.badge" class="nav-badge" :aria-label="`непрочитанных: ${item.badge}`">{{ item.badge }}</span>
       </RouterLink>
     </nav>
 
@@ -172,6 +185,20 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .nav-link.active {
   background: var(--primary-soft);
   color: var(--primary-text);
+}
+
+.nav-badge {
+  min-width: 20px;
+  margin-left: auto;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .footer {

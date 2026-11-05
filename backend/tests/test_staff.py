@@ -206,7 +206,8 @@ async def test_disabled_employee_cannot_be_chosen_and_gets_no_letters(client, us
     clock.set(VOTING_END)
     await app.state.jobs.run_due()
     async with app.state.sessionmaker() as db:
-        recipients = set((await db.scalars(select(Email.recipient_id))).all())
+        # Приглашение Борис получил до отключения; итогов после отключения — нет.
+        recipients = set((await db.scalars(select(Email.recipient_id).where(Email.kind == "final"))).all())
     assert user_ids["anna"] in recipients
     assert user_ids["boris"] not in recipients
 

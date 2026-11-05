@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.clock import Clock, SystemClock
 from app.config import Settings
 from app.db import create_engine, create_sessionmaker
-from app.jobs import JobRunner, plan_jobs
+from app.jobs import JobRunner, plan_jobs, send_invitations
 from app.models import Contest, ContestParticipant, Idea, Job, JobStatus, Role, User, Vote
 
 
@@ -244,6 +244,7 @@ async def _create_contest(
     ]
     db.add_all(jobs)
     await db.flush()
+    await send_invitations(db, contest, created_at)  # как при создании через API (D-063)
 
     # Хронология: идеи, голоса и наступившие задания — в том порядке, в каком они случились бы.
     events: list[tuple[datetime, int, object]] = []

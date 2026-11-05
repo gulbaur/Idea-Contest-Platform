@@ -1,38 +1,28 @@
 <script setup>
-// Демопочта (D-016, D-045): участник видит только свои письма, организатор — журнал всех.
-// Права проверяет сервер: страница просто показывает то, что он вернул.
+// «Входящие» (D-016, D-045, D-063): только письма, адресованные мне, — у любой роли.
+// Технический журнал всех писем — отдельная страница «Журнал рассылки» (JournalPage.vue).
 import { computed, onMounted, ref, watch } from 'vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import EmptyState from '../components/EmptyState.vue'
 import Icon from '../components/Icon.vue'
+import LetterView from '../components/LetterView.vue'
 import { useServerNow } from '../composables/useServerNow.js'
 import { api } from '../lib/api.js'
 import { useSignals } from '../lib/connection.js'
 import { formatDateTime } from '../lib/format.js'
+import { kindOf } from '../lib/mail.js'
 import { notify } from '../lib/notify.js'
-import { isOrganizer } from '../lib/session.js'
-
-const KINDS = {
-  reminder_submission: { label: 'Напоминание о подаче', icon: 'bell', tone: 'badge-primary' },
-  reminder_voting: { label: 'Напоминание о голосовании', icon: 'bell', tone: 'badge-primary' },
-  final: { label: 'Итоги', icon: 'trophy', tone: 'badge-gold' },
-}
-const KIND_FILTERS = [
-  { key: 'all', label: 'Все' },
-  { key: 'reminders', label: 'Напоминания' },
-  { key: 'final', label: 'Итоги' },
-]
+import { refreshUnread, unread } from '../lib/unread.js'
 
 const route = useRoute()
 const router = useRouter()
 const now = useServerNow()
-const organizer = computed(isOrganizer)
 
 const letters = ref(null)
 const contests = ref([])
 const error = ref(null)
-const kind = ref('all')
+const onlyUnread = ref(false)
 const selectedId = ref(null)
 
 const contestFilter = computed({
@@ -45,13 +35,17 @@ const PAGE = 50
 const hasMore = ref(false)
 const loadingMore = ref(false)
 
+function query(extra = {}) {
+  return { contest_id: contestFilter.value || undefined, unread: onlyUnread.value || undefined, ...extra }
+}
+
 async function load() {
   // Перечитываем столько писем, сколько уже показано: догруженные старые не пропадают.
   const limit = Math.max(PAGE, letters.value?.length ?? 0)
   try {
     const [list, contestList] = await Promise.all([
-      api.emails({ contest_id: contestFilter.value || undefined, limit }),
-      contests.value.length ? Promise.resolve(contests.value) : api.contests(),
+      api.emails(query({ limit })),
+      contests.value.length ? Promise.resolve(contests.value) : api.contests().catch(() => []),
     ])
     letters.value = list
     hasMore.value = list.length === limit
@@ -68,12 +62,7 @@ async function loadMore() {
   if (!last || loadingMore.value) return
   loadingMore.value = true
   try {
-    const page = await api.emails({
-      contest_id: contestFilter.value || undefined,
-      limit: PAGE,
-      before_time: last.created_at,
-      before_id: last.id,
-    })
+    const page = await api.emails(query({ limit: PAGE, before_time: last.created_at, before_id: last.id }))
     const known = new Set(letters.value.map((letter) => letter.id))
     letters.value = [...letters.value, ...page.filter((letter) => !known.has(letter.id))]
     hasMore.value = page.length === PAGE
@@ -84,100 +73,110 @@ async function loadMore() {
   }
 }
 
+// Открытое письмо становится прочитанным — на сервере и сразу на экране.
+async function open(letter) {
+  selectedId.value = letter.id
+  if (letter.read_at) return
+  letter.read_at = new Date(now.value).toISOString()
+  unread.count = Math.max(0, unread.count - 1)
+  try {
+    await api.markRead(letter.id)
+  } catch {
+    // Не страшно: письмо останется непрочитанным на сервере и обновится при следующей загрузке.
+  }
+  refreshUnread()
+}
+
+async function readAll() {
+  try {
+    await api.markAllRead()
+    await Promise.all([load(), refreshUnread()])
+  } catch (failure) {
+    notify.error(failure.message)
+  }
+}
+
 useSignals((message) => {
   if (message.type === 'mail_changed' || message.type === 'resync') load()
 })
 onMounted(load)
-watch(contestFilter, () => {
+watch([contestFilter, onlyUnread], () => {
   selectedId.value = null
   letters.value = null // новый фильтр — снова с первой порции
   load()
 })
 
-const visible = computed(() =>
-  (letters.value ?? []).filter((letter) => {
-    if (kind.value === 'reminders') return letter.kind !== 'final'
-    if (kind.value === 'final') return letter.kind === 'final'
-    return true
-  }),
-)
-const selected = computed(() => visible.value.find((letter) => letter.id === selectedId.value) ?? null)
+const selected = computed(() => letters.value?.find((letter) => letter.id === selectedId.value) ?? null)
 </script>
 
 <template>
   <div class="container page">
     <header class="page-header">
       <div>
-        <h1>Почта</h1>
-        <p class="subtitle">
-          {{ organizer ? 'Журнал всех писем сервиса — видно, кому и что отправлено.' : 'Письма, отправленные вам.' }}
-        </p>
+        <h1>Входящие</h1>
+        <p class="subtitle">Письма, отправленные вам: приглашения, напоминания, итоги конкурсов.</p>
       </div>
-      <div class="filters row">
-        <select v-model="contestFilter" class="select contest-select" aria-label="Конкурс">
-          <option value="">Все конкурсы</option>
-          <option v-for="item in contests" :key="item.id" :value="item.id">{{ item.topic }}</option>
-        </select>
-        <div class="segmented" role="tablist" aria-label="Вид писем">
-          <button
-            v-for="item in KIND_FILTERS"
-            :key="item.key"
-            type="button"
-            role="tab"
-            :aria-selected="kind === item.key"
-            :class="{ active: kind === item.key }"
-            @click="kind = item.key"
-          >
-            {{ item.label }}
-          </button>
-        </div>
-      </div>
+      <button v-if="unread.count" class="btn btn-sm" type="button" @click="readAll">
+        <Icon name="check" :size="16" /> Отметить все прочитанными
+      </button>
     </header>
+
+    <div class="toolbar">
+      <select v-model="contestFilter" class="select contest-select" aria-label="Конкурс">
+        <option value="">Все конкурсы</option>
+        <option v-for="item in contests" :key="item.id" :value="item.id">{{ item.topic }}</option>
+      </select>
+      <div class="segmented" role="tablist" aria-label="Какие письма">
+        <button type="button" role="tab" :aria-selected="!onlyUnread" :class="{ active: !onlyUnread }" @click="onlyUnread = false">
+          Все
+        </button>
+        <button type="button" role="tab" :aria-selected="onlyUnread" :class="{ active: onlyUnread }" @click="onlyUnread = true">
+          Непрочитанные <span class="count">{{ unread.count }}</span>
+        </button>
+      </div>
+    </div>
 
     <div class="notice stub">
       <Icon name="info" class="icon" />
-      <span>
-        Это демонстрационная почта: письма сохраняются в базе данных и показываются здесь, наружу они не отправляются.
-      </span>
+      <span>Это демонстрационная почта: письма сохраняются в базе данных и показываются здесь, наружу они не отправляются.</span>
     </div>
 
     <EmptyState v-if="error" tone="error" icon="alert" title="Не удалось загрузить письма" :text="error.message">
       <button class="btn" type="button" @click="load"><Icon name="refresh" /> Повторить</button>
     </EmptyState>
 
-    <div v-else-if="!letters" class="stack">
+    <div v-else-if="!letters" class="stack-sm">
       <div v-for="n in 4" :key="n" class="skeleton" style="height: 64px" />
     </div>
 
     <EmptyState
-      v-else-if="!visible.length"
+      v-else-if="!letters.length"
       icon="mail"
-      title="Писем пока нет"
-      text="Напоминания приходят тем, кто ещё не участвовал, незадолго до конца раунда; итоговое письмо — каждому участнику после финала."
+      :title="onlyUnread ? 'Непрочитанных писем нет' : 'Писем пока нет'"
+      text="Сюда приходят приглашения в конкурсы, напоминания незадолго до конца раунда и итоги после финала."
     />
 
     <div v-else class="mailbox" :class="{ reading: selected }">
-      <ul class="list" aria-label="Письма">
-        <li v-for="letter in visible" :key="letter.id">
+      <ul class="list card" aria-label="Письма">
+        <li v-for="letter in letters" :key="letter.id">
           <button
             class="item"
-            :class="{ active: letter.id === selectedId }"
+            :class="{ active: letter.id === selectedId, unread: !letter.read_at }"
             type="button"
             :data-letter-id="letter.id"
-            @click="selectedId = letter.id"
+            @click="open(letter)"
           >
-            <span class="kind-mark" :class="letter.kind"><Icon :name="KINDS[letter.kind].icon" :size="16" /></span>
+            <span class="kind-mark" :class="letter.kind"><Icon :name="kindOf(letter.kind).icon" :size="16" /></span>
             <span class="summary">
               <span class="subject">{{ letter.subject }}</span>
-              <span class="meta">
-                <template v-if="organizer">{{ letter.recipient.display_name }} · </template>{{ letter.contest_topic }}
-              </span>
+              <span class="meta">{{ kindOf(letter.kind).label }} · {{ letter.contest_topic }}</span>
             </span>
             <span class="time faint">{{ formatDateTime(letter.created_at, now) }}</span>
+            <span v-if="!letter.read_at" class="dot" aria-label="не прочитано" />
           </button>
         </li>
         <li v-if="hasMore" class="more">
-          <button class="btn btn-sm" type="button" :disabled="loadingMore" @click="loadMore">
+          <button class="btn btn-ghost btn-sm" type="button" :disabled="loadingMore" @click="loadMore">
             <span v-if="loadingMore" class="spinner" aria-hidden="true" /> Показать ещё
           </button>
         </li>
@@ -187,27 +186,7 @@ const selected = computed(() => visible.value.find((letter) => letter.id === sel
         <button class="btn btn-ghost btn-sm close" type="button" @click="selectedId = null">
           <Icon name="arrow-left" /> К списку
         </button>
-        <span class="badge" :class="KINDS[selected.kind].tone">{{ KINDS[selected.kind].label }}</span>
-        <h2 class="subject-big">{{ selected.subject }}</h2>
-        <dl class="headers">
-          <div>
-            <dt>Кому</dt>
-            <dd>{{ selected.recipient.display_name }} &lt;{{ selected.to_address }}&gt;</dd>
-          </div>
-          <div>
-            <dt>Когда</dt>
-            <dd>{{ formatDateTime(selected.created_at, now) }}</dd>
-          </div>
-          <div>
-            <dt>Конкурс</dt>
-            <dd>
-              <RouterLink :to="{ name: 'contest', params: { id: selected.contest_id } }">
-                {{ selected.contest_topic }}
-              </RouterLink>
-            </dd>
-          </div>
-        </dl>
-        <pre class="body">{{ selected.body }}</pre>
+        <LetterView :letter="selected" :now="now" />
       </article>
       <div v-else class="letter placeholder">
         <Icon name="mail" :size="28" />
@@ -218,80 +197,54 @@ const selected = computed(() => visible.value.find((letter) => letter.id === sel
 </template>
 
 <style scoped>
-.more {
+.toolbar {
   display: flex;
-  justify-content: center;
-  padding-top: 6px;
-}
-
-.filters {
+  flex-wrap: wrap;
   gap: 10px;
+  margin-bottom: 16px;
 }
 
 .contest-select {
   width: auto;
-  max-width: 280px;
-}
-
-.segmented {
-  display: inline-flex;
-  padding: 4px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-}
-
-.segmented button {
-  padding: 6px 12px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-2);
-  font: inherit;
-  font-weight: 600;
-  font-size: var(--text-sm);
-  cursor: pointer;
-}
-
-.segmented button.active {
-  background: var(--primary-soft);
-  color: var(--primary-text);
+  max-width: 320px;
 }
 
 .stub {
-  margin-bottom: 18px;
+  margin-bottom: 16px;
 }
 
 .mailbox {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
-  gap: 18px;
+  gap: 16px;
   align-items: start;
 }
 
 .list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
   margin: 0;
   padding: 0;
+  overflow: hidden;
   list-style: none;
 }
 
+.list li + li {
+  border-top: 1px solid var(--border);
+}
+
 .item {
-  display: flex;
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--text);
+  padding: 12px 28px 12px 14px;
+  border: 0;
+  background: transparent;
+  color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
 }
 
 .item:hover {
@@ -299,19 +252,17 @@ const selected = computed(() => visible.value.find((letter) => letter.id === sel
 }
 
 .item.active {
-  border-color: var(--primary);
   background: var(--primary-soft);
 }
 
 .kind-mark {
   display: grid;
   place-items: center;
-  flex: none;
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  background: var(--primary-soft);
-  color: var(--primary-text);
+  background: var(--surface-hover);
+  color: var(--text-2);
 }
 
 .kind-mark.final {
@@ -319,34 +270,71 @@ const selected = computed(() => visible.value.find((letter) => letter.id === sel
   color: var(--warning);
 }
 
+.kind-mark.invitation,
+.kind-mark.voting_open {
+  background: var(--primary-soft);
+  color: var(--primary-text);
+}
+
+.kind-mark.reminder_submission,
+.kind-mark.reminder_voting {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.kind-mark.org_job_failed {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
 .summary {
   display: flex;
   flex-direction: column;
-  flex: 1;
+  gap: 2px;
   min-width: 0;
 }
 
-/* Тема — до двух строк: в одной строке почти все темы обрезались. */
 .subject {
+  /* Длинная тема — не больше двух строк. */
   display: -webkit-box;
   overflow: hidden;
-  font-weight: 600;
-  overflow-wrap: anywhere;
-  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+
+.item.unread .subject {
+  font-weight: 600;
 }
 
 .meta {
   overflow: hidden;
-  color: var(--text-2);
+  color: var(--text-3);
   font-size: var(--text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .time {
-  flex: none;
-  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.dot {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: var(--primary);
+}
+
+.more {
+  display: flex;
+  justify-content: center;
+  padding: 6px;
 }
 
 .letter {
@@ -356,46 +344,7 @@ const selected = computed(() => visible.value.find((letter) => letter.id === sel
 
 .letter .close {
   display: none;
-  margin: -6px 0 10px -8px;
-}
-
-.subject-big {
-  margin: 10px 0 14px;
-  overflow-wrap: anywhere;
-}
-
-.headers {
-  display: grid;
-  gap: 6px;
-  margin: 0 0 16px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--border);
-}
-
-.headers div {
-  display: flex;
-  gap: 10px;
-  font-size: var(--text-md);
-}
-
-.headers dt {
-  width: 70px;
-  flex: none;
-  color: var(--text-3);
-}
-
-.headers dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.body {
-  margin: 0;
-  font-family: var(--font);
-  font-size: var(--text-lg);
-  line-height: 1.6;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  margin-bottom: 8px;
 }
 
 .placeholder {
@@ -409,17 +358,14 @@ const selected = computed(() => visible.value.find((letter) => letter.id === sel
   color: var(--text-3);
 }
 
+/* Узкий экран: список или письмо — по очереди. */
 @media (max-width: 860px) {
   .mailbox {
-    /* minmax(0, …): иначе длинная тема письма в одну строку растягивает колонку шире экрана. */
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .placeholder {
-    display: none;
-  }
-
-  .mailbox.reading .list {
+  .mailbox.reading .list,
+  .mailbox:not(.reading) .letter {
     display: none;
   }
 
@@ -431,9 +377,8 @@ const selected = computed(() => visible.value.find((letter) => letter.id === sel
     display: inline-flex;
   }
 
-  .contest-select {
-    max-width: none;
-    flex: 1;
+  .time {
+    display: none;
   }
 }
 </style>

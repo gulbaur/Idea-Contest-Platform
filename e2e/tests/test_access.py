@@ -122,8 +122,8 @@ def test_logout_in_one_tab_keeps_the_other(people, api):
     first.get_by_role("button", name="Выйти").click()
     expect(first).to_have_url(re.compile(r"/login"))
     # Вторая вкладка работает со своим входом.
-    second.get_by_role("link", name="Почта").click()
-    expect(second.get_by_role("heading", name="Почта")).to_be_visible()
+    second.get_by_role("link", name="Входящие").click()
+    expect(second.get_by_role("heading", name="Входящие")).to_be_visible()
     expect(second.get_by_text("Онлайн")).to_be_visible()
     assert second.request.get("/api/auth/me", headers={"Authorization": f"Bearer {tab_token(second)}"}).ok
     # Токен первой вкладки отозван на сервере.

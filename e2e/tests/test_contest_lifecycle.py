@@ -175,18 +175,22 @@ def test_contest_from_creation_to_results(people, api):
     assert api("anna").delete(f"/api/ideas/{anna_idea['id']}").status == 409
 
     # --- письма: итоговые приходят сами -----------------------------------------------
-    anna1.get_by_role("link", name="Почта").click()
+    anna1.get_by_role("link", name="Входящие").click()
     expect(
         anna1.locator("button[data-letter-id]").filter(has_text=f"Ваша идея победила в конкурсе «{topic}»")
     ).to_have_count(1)
 
     def final_recipients():
-        return {m["recipient"]["id"] for m in org_api.emails(cid) if m["kind"] == "final"}
+        return {m["recipient"]["id"] for m in org_api.journal(cid) if m["kind"] == "final"} - {org_api.id}
 
     participants = {api(login).id for login in ("anna", "boris", "vera", "gleb")}
     eventually(lambda: final_recipients() == participants)
-    # Глеб не подал идею и не голосовал — оба напоминания и итоги.
-    assert sorted(m["kind"] for m in api("gleb").emails(cid)) == ["final", "reminder_submission", "reminder_voting"]
+    # Глеб не подал идею и не голосовал — приглашение, оба напоминания, «голосование открыто» и итоги.
+    assert sorted(m["kind"] for m in api("gleb").emails(cid)) == [
+        "final", "invitation", "reminder_submission", "reminder_voting", "voting_open",
+    ]
+    # Организатору — его итоговое письмо и сводки числами (D-063).
+    assert {m["kind"] for m in org_api.emails(cid)} >= {"final", "org_submission_closed"}
     assert api("dina").emails(cid) == []
     boris_final = next(m for m in api("boris").emails(cid) if m["kind"] == "final")
     assert f"Победила идея «{ANNA}» (автор: Анна Смирнова, 2 голоса)" in boris_final["body"]

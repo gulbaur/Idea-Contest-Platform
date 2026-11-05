@@ -30,8 +30,12 @@ async def _letters(app, contest_id: int, recipient_id: int, count: int, *, same_
         await db.commit()
 
 
-async def _contests(client, organizer: str, count: int) -> list[int]:
-    return [(await create_contest(client, organizer, topic=f"Конкурс {n}"))["id"] for n in range(count)]
+async def _contests(client, organizer: str, count: int, participant: int) -> list[int]:
+    """Конкурсы с одним участником (не Анной и не Борисом): приглашения им не приходят."""
+    return [
+        (await create_contest(client, organizer, topic=f"Конкурс {n}", participants=[participant]))["id"]
+        for n in range(count)
+    ]
 
 
 async def _all_pages(client, token: str, limit: int) -> list[dict]:
@@ -49,7 +53,7 @@ async def test_all_letters_are_reachable_page_by_page(client, app, user_ids, sam
     organizer = await login(client, "organizer")
     anna = await login(client, "anna")
     # 250 писем — больше прежнего предела в 200; одно письмо вида final на конкурс.
-    for contest_id in await _contests(client, organizer, 250):
+    for contest_id in await _contests(client, organizer, 250, user_ids["gleb"]):
         await _letters(app, contest_id, user_ids["anna"], 1, same_time=same_time)
 
     letters = await _all_pages(client, anna, limit=40)
@@ -63,7 +67,7 @@ async def test_all_letters_are_reachable_page_by_page(client, app, user_ids, sam
 async def test_cursor_does_not_reveal_other_peoples_letters(client, app, user_ids):
     organizer = await login(client, "organizer")
     boris = await login(client, "boris")
-    contest_id = (await _contests(client, organizer, 1))[0]
+    contest_id = (await _contests(client, organizer, 1, user_ids["gleb"]))[0]
     await _letters(app, contest_id, user_ids["anna"], 1)
 
     page = await client.get(

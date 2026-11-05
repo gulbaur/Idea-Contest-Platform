@@ -181,12 +181,12 @@ class Hub:
         )
 
     def mail_changed(self, recipient_ids: Iterable[int]) -> None:
-        """Появились письма: обновить почту получателей и журнал организаторов (D-045)."""
+        """Появились письма: обновить «Входящие» получателей и журнал рассылки (D-045, D-063)."""
         recipients = frozenset(recipient_ids)
         if recipients:
             self._deliver(
                 {"type": "mail_changed"},
-                lambda c: c.role == Role.ORGANIZER or c.user_id in recipients,
+                lambda c: c.role in (Role.ORGANIZER, Role.ADMIN) or c.user_id in recipients,
             )
 
     async def _deliver_to_contest(self, contest_id: int, message: dict) -> None:

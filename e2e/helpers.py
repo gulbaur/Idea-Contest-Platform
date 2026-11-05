@@ -94,7 +94,15 @@ class Api:
         return next((i for i in self.snapshot(contest_id)["ideas"] if i["title"] == title), None)
 
     def emails(self, contest_id: int | None = None) -> list[dict]:
+        """«Входящие» этого пользователя (D-063)."""
         path = "/api/emails" + (f"?contest_id={contest_id}" if contest_id else "")
+        response = self.get(path)
+        assert response.ok, response.text()
+        return response.json()
+
+    def journal(self, contest_id: int | None = None) -> list[dict]:
+        """Журнал рассылки — организатору и администратору (D-063)."""
+        path = "/api/emails/journal" + (f"?contest_id={contest_id}" if contest_id else "")
         response = self.get(path)
         assert response.ok, response.text()
         return response.json()

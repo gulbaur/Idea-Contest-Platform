@@ -7,6 +7,7 @@ import ContestCreatePage from './pages/ContestCreatePage.vue'
 import ContestPage from './pages/ContestPage.vue'
 import ContestsPage from './pages/ContestsPage.vue'
 import EmployeesPage from './pages/EmployeesPage.vue'
+import JournalPage from './pages/JournalPage.vue'
 import LoginPage from './pages/LoginPage.vue'
 import MailPage from './pages/MailPage.vue'
 import NotFoundPage from './pages/NotFoundPage.vue'
@@ -26,7 +27,8 @@ export const routes = [
     meta: { organizer: true, title: 'Новый конкурс' },
   },
   { path: '/contests/:id(\\d+)', name: 'contest', component: ContestPage, props: true, meta: { title: 'Конкурс' } },
-  { path: '/mail', name: 'mail', component: MailPage, meta: { title: 'Почта' } },
+  { path: '/mail', name: 'mail', component: MailPage, meta: { title: 'Входящие' } },
+  { path: '/journal', name: 'journal', component: JournalPage, meta: { staff: true, title: 'Журнал рассылки' } },
   { path: '/settings', name: 'settings', component: SettingsPage, meta: { title: 'Настройки' } },
   { path: '/employees', name: 'employees', component: EmployeesPage, meta: { admin: true, title: 'Сотрудники' } },
   { path: '/:pathMatch(.*)*', name: 'not-found', component: NotFoundPage, meta: { title: 'Не найдено' } },
@@ -39,6 +41,7 @@ export function guard(to) {
   if (to.name === 'login' && session.token) return '/'
   if (to.meta.organizer && !isOrganizer()) return '/'
   if (to.meta.admin && !isAdmin()) return '/'
+  if (to.meta.staff && !isAdmin() && !isOrganizer()) return '/'
   // Администратор конкурсов не ведёт и в них не участвует (D-062) — его раздел «Сотрудники».
   if (isAdmin() && to.path.startsWith('/contests')) return { name: 'employees' }
   return true

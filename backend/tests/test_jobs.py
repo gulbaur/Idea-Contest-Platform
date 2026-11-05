@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.jobs import JobRunner, _votes, _when
 from app.main import create_app
-from app.models import Email, Job
+from app.models import Email, Job, User
 from tests.helpers import (
     T0,
     auth,
@@ -62,8 +62,18 @@ async def jobs_of(app, contest_id: int) -> dict[str, Job]:
         return {job.kind: job for job in rows}
 
 
+# Письма, о которых эти тесты: напоминания и итоги участникам. Приглашения, «голосование открыто»
+# и письма организатору (D-063) проверяет test_notifications.py.
+PARTICIPANT_KINDS = ("reminder_submission", "reminder_voting", "final")
+
+
 async def emails(app, **filters) -> list[Email]:
-    statement = select(Email).order_by(Email.recipient_id, Email.kind)
+    statement = (
+        select(Email)
+        .join(User, User.id == Email.recipient_id)
+        .where(Email.kind.in_(PARTICIPANT_KINDS), User.role == "employee")
+        .order_by(Email.recipient_id, Email.kind)
+    )
     for column, value in filters.items():
         statement = statement.where(getattr(Email, column) == value)
     async with app.state.sessionmaker() as db:
@@ -84,10 +94,11 @@ async def idea(client, token, contest_id, title="Идея") -> int:
 # --- план заданий ------------------------------------------------------------
 
 
-async def test_contest_gets_three_jobs_at_the_right_moments(app, cid):
+async def test_contest_gets_four_jobs_at_the_right_moments(app, cid):
     jobs = await jobs_of(app, cid)
     assert {k: (j.run_at, j.status) for k, j in jobs.items()} == {
         "remind_submission": (REMIND_SUB, "pending"),
+        "open_voting": (SUB_END, "pending"),  # «голосование открыто» (D-063)
         "remind_voting": (REMIND_VOTE, "pending"),
         "finalize": (VOTE_END, "pending"),
     }
@@ -243,11 +254,14 @@ async def test_downtime_skips_reminders_of_closed_rounds_and_runs_late_final(
     """Сервер «лежал» во время напоминаний и сроков (D-015, D-043)."""
     await idea(client, t["anna"], cid)
     clock.set(SUB_END + timedelta(hours=1))  # напоминание о подаче проспано, подача закрыта
-    [outcome] = await app.state.jobs.run_due()
+    outcomes = {o.kind: o for o in await app.state.jobs.run_due()}
+    outcome = outcomes["remind_submission"]
     assert (outcome.kind, outcome.status, outcome.note) == ("remind_submission", "skipped", "раунд уже закрыт")
+    assert outcomes["open_voting"].status == "done"  # голосование ещё идёт — о нём сообщить не поздно
 
     clock.set(VOTE_END + timedelta(hours=5))  # проспаны и напоминание о голосовании, и финал
     outcomes = {o.kind: o for o in await app.state.jobs.run_due()}
+    assert "open_voting" not in outcomes  # уже выполнено выше
     assert outcomes["remind_voting"].status == "skipped"
     assert outcomes["finalize"].status == "done"  # финал — с опозданием, но выполнен
     assert await emails(app, kind="reminder_submission") == []
@@ -454,28 +468,39 @@ async def test_participant_sees_only_own_letters_organizer_sees_all(client, app,
     clock.set(REMIND_SUB)
     await app.state.jobs.run_due()
 
+    def kinds(letters):
+        return [(e["recipient"]["id"], e["kind"]) for e in letters]
+
     vera = (await client.get("/api/emails", headers=auth(t["vera"]))).json()
-    assert [(e["recipient"]["id"], e["kind"]) for e in vera] == [(user_ids["vera"], "reminder_submission")]
+    assert kinds(vera) == [(user_ids["vera"], "reminder_submission"), (user_ids["vera"], "invitation")]
     assert vera[0]["contest_topic"] == "Как улучшить офис"
     assert set(vera[0]) == {
         "id", "contest_id", "contest_topic", "recipient", "to_address", "kind", "subject", "body", "created_at",
+        "read_at",
     }
-    assert (await client.get("/api/emails", headers=auth(t["anna"]))).json() == []  # подала идею
-    assert (await client.get("/api/emails", headers=auth(t["dina"]))).json() == []
+    anna = (await client.get("/api/emails", headers=auth(t["anna"]))).json()
+    assert [kind for _, kind in kinds(anna)] == ["invitation"]  # подала идею — напоминания нет
+    assert (await client.get("/api/emails", headers=auth(t["dina"]))).json() == []  # не участница
 
-    # До финала организатор напоминаний не видит: по их получателям можно вычислить авторов (D-058).
-    assert (await client.get("/api/emails", headers=auth(t["organizer"]))).json() == []
+    # «Входящие» организатора — только его письма; журнал — отдельно (D-063).
+    inbox = (await client.get("/api/emails", headers=auth(t["organizer"]))).json()
+    assert [kind for _, kind in kinds(inbox)] == ["org_submission_soon"]
+    # До финала напоминаний нет и в журнале: по их получателям можно вычислить авторов (D-058).
+    journal = (await client.get("/api/emails/journal", headers=auth(t["organizer"]))).json()
+    assert not any(e["kind"].startswith("reminder") for e in journal)
     clock.set(VOTE_END)
     await app.state.jobs.run_due()
-    journal = (await client.get("/api/emails", headers=auth(t["organizer"]))).json()
+    journal = (await client.get("/api/emails/journal", headers=auth(t["organizer"]))).json()
     reminders = {e["recipient"]["id"] for e in journal if e["kind"] == "reminder_submission"}
     assert reminders == {user_ids[u] for u in ("boris", "vera", "gleb")}
+    # Итоги — участникам и организатору-создателю, в его варианте письма (D-063).
     assert {e["recipient"]["id"] for e in journal if e["kind"] == "final"} == {
-        user_ids[u] for u in ("anna", "boris", "vera", "gleb")
+        user_ids[u] for u in ("anna", "boris", "vera", "gleb", "organizer")
     }
-    filtered = await client.get("/api/emails", params={"contest_id": cid + 1}, headers=auth(t["organizer"]))
+    filtered = await client.get("/api/emails/journal", params={"contest_id": cid + 1}, headers=auth(t["organizer"]))
     assert filtered.json() == []
     assert (await client.get("/api/emails")).status_code == 401
+    assert (await client.get("/api/emails/journal", headers=auth(t["vera"]))).status_code == 403
 
 
 async def test_organizer_sees_reminders_of_other_contest_only_after_its_final(client, app, t, cid, clock, user_ids):
@@ -489,9 +514,10 @@ async def test_organizer_sees_reminders_of_other_contest_only_after_its_final(cl
     await app.state.jobs.run_due()  # конкурс cid завершён
     clock.set(VOTE_END + DAY - timedelta(hours=1))
     await app.state.jobs.run_due()  # напоминание о подаче в конкурсе later
-    kinds = {(e["contest_id"], e["kind"]) for e in (await client.get("/api/emails", headers=auth(t["organizer"]))).json()}
+    journal = (await client.get("/api/emails/journal", headers=auth(t["organizer"]))).json()
+    kinds = {(e["contest_id"], e["kind"]) for e in journal}
     assert (cid, "final") in kinds and (cid, "reminder_submission") in kinds
-    assert all(contest != later["id"] for contest, _ in kinds)
+    assert not any(contest == later["id"] and kind.startswith("reminder") for contest, kind in kinds)
     vera = (await client.get("/api/emails", headers=auth(t["vera"]))).json()
     assert any(e["contest_id"] == later["id"] for e in vera)  # участнице её напоминание видно сразу
 
@@ -502,7 +528,7 @@ async def test_letters_are_listed_newest_first(client, app, t, cid, clock):
     clock.set(VOTE_END)
     await app.state.jobs.run_due()
     kinds = [e["kind"] for e in (await client.get("/api/emails", headers=auth(t["vera"]))).json()]
-    assert kinds == ["final", "reminder_submission"]
+    assert kinds == ["final", "reminder_submission", "invitation"]  # идей нет — «голосование открыто» не приходит
 
 
 # --- сигнал WebSocket --------------------------------------------------------
@@ -589,7 +615,8 @@ async def test_organizer_snapshot_shows_participants_and_schedule(client, app, t
     ]
     snap = (await snapshot(client, t["organizer"], cid)).json()
     assert [(j["kind"], j["status"]) for j in snap["schedule"]] == [
-        ("remind_submission", "pending"), ("remind_voting", "pending"), ("finalize", "pending"),
+        ("remind_submission", "pending"), ("open_voting", "pending"), ("remind_voting", "pending"),
+        ("finalize", "pending"),
     ]
 
     clock.set(REMIND_SUB)

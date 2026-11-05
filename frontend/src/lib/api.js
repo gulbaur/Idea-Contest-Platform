@@ -141,4 +141,8 @@ export const api = {
   revokeVote: (ideaId) => request('DELETE', `/ideas/${ideaId}/vote`),
 
   emails: (query) => request('GET', '/emails', { query }),
+  journal: (query) => request('GET', '/emails/journal', { query }),
+  unreadCount: () => request('GET', '/emails/unread-count'),
+  markRead: (id) => request('POST', `/emails/${id}/read`),
+  markAllRead: () => request('POST', '/emails/read-all'),
 }

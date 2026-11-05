@@ -16,7 +16,8 @@ vi.mock('../lib/api.js', async (importOriginal) => {
     ...real,
     api: {
       login: fn(), logout: fn(), me: fn(), demo: fn(), health: fn(), contests: fn(), contest: fn(), employees: fn(),
-      createContest: fn(), emails: fn(), participants: fn(),
+      createContest: fn(), emails: fn(), participants: fn(), journal: fn(), unreadCount: fn(), markRead: fn(),
+      markAllRead: fn(),
     },
   }
 })
@@ -286,47 +287,61 @@ describe('создание конкурса', () => {
 })
 
 describe('почта', () => {
-  const letter = (id, recipient, kind, subject) => ({
+  const letter = (id, recipient, kind, subject, extra = {}) => ({
     id,
     contest_id: 7,
     contest_topic: 'Как улучшить офис',
     recipient,
-    to_address: `${recipient.display_name}@example.com`,
+    to_address: `${recipient.login}@example.com`,
     kind,
     subject,
     body: `Здравствуйте!\n\nТекст письма ${id}`,
     created_at: new Date(NOW - id * 60_000).toISOString(),
+    read_at: null,
+    ...extra,
   })
 
-  it('участник видит свои письма и читает выбранное', async () => {
+  beforeEach(() => {
+    api.unreadCount.mockResolvedValue({ count: 0 })
+    api.markRead.mockResolvedValue(null)
+  })
+
+  it('«Входящие»: свои письма; открытое письмо становится прочитанным', async () => {
     signIn(USERS.anna)
     api.contests.mockResolvedValue([contestIn('finished')])
     api.emails.mockResolvedValue([
       letter(1, USERS.anna, 'final', 'Ваша идея победила в конкурсе «Как улучшить офис»'),
-      letter(2, USERS.anna, 'reminder_voting', 'Напоминание: голосование закрывается'),
+      letter(2, USERS.anna, 'invitation', 'Вас пригласили в конкурс идей', { read_at: new Date(NOW).toISOString() }),
     ])
     ;({ wrapper } = await mountAt('/mail'))
 
-    expect(wrapper.text()).toContain('Письма, отправленные вам')
+    expect(wrapper.find('h1').text()).toBe('Входящие')
     expect(wrapper.findAll('button[data-letter-id]')).toHaveLength(2)
-    expect(wrapper.find('.meta').text()).not.toContain('Анна Смирнова') // своё имя в списке не нужно
+    expect(wrapper.find('[data-letter-id="1"]').classes()).toContain('unread')
+    expect(wrapper.find('[data-letter-id="2"]').classes()).not.toContain('unread')
+    expect(wrapper.find('[data-letter-id="2"]').text()).toContain('Приглашение')
 
     await wrapper.find('button[data-letter-id="1"]').trigger('click')
+    await flushPromises()
     expect(wrapper.find('.letter .body').text()).toContain('Текст письма 1')
+    expect(api.markRead).toHaveBeenCalledWith(1)
+    expect(wrapper.find('[data-letter-id="1"]').classes()).not.toContain('unread')
 
-    await button(wrapper, 'Напоминания').trigger('click')
-    expect(wrapper.findAll('button[data-letter-id]')).toHaveLength(1)
+    await wrapper.find('button[data-letter-id="2"]').trigger('click')
+    expect(api.markRead).toHaveBeenCalledTimes(1) // уже прочитанное повторно не отмечается
   })
 
-  it('организатор видит журнал с получателями; фильтр по конкурсу уходит на сервер', async () => {
-    signIn(USERS.organizer)
+  it('фильтры конкурса и «Непрочитанные» уходят на сервер', async () => {
+    signIn(USERS.anna)
     api.contests.mockResolvedValue([contestIn('finished')])
-    api.emails.mockResolvedValue([letter(3, USERS.boris, 'final', 'Итоги конкурса')])
+    api.emails.mockResolvedValue([])
     ;({ wrapper } = await mountAt('/mail?contest=7'))
+    expect(api.emails).toHaveBeenCalledWith({ contest_id: 7, unread: undefined, limit: 50 })
 
-    expect(api.emails).toHaveBeenCalledWith({ contest_id: 7, limit: 50 })
-    expect(wrapper.text()).toContain('Журнал всех писем')
-    expect(wrapper.find('.meta').text()).toContain('Борис Котов')
+    await button(wrapper, 'Непрочитанные').trigger('click')
+    await flushPromises()
+    expect(api.emails).toHaveBeenLastCalledWith({ contest_id: 7, unread: true, limit: 50 })
+    expect(wrapper.text()).toContain('Непрочитанных писем нет')
   })
 
   it('новое письмо появляется по сигналу без перезагрузки; пустой ящик — пояснение', async () => {
@@ -354,11 +369,32 @@ describe('почта', () => {
 
     expect(api.emails).toHaveBeenLastCalledWith({
       contest_id: undefined,
+      unread: undefined,
       limit: 50,
       before_time: first[49].created_at,
       before_id: 50,
     })
     expect(wrapper.findAll('button[data-letter-id]')).toHaveLength(51)
-    expect(wrapper.text()).not.toContain('Показать ещё') // порция неполная — больше писем нет
+    expect(wrapper.text()).not.toContain('Показать ещё')
+  })
+
+  it('журнал рассылки — организатору: все письма с получателями, письмо открывается в окне', async () => {
+    signIn(USERS.organizer)
+    api.contests.mockResolvedValue([contestIn('finished')])
+    api.journal.mockResolvedValue([letter(3, USERS.boris, 'final', 'Итоги конкурса')])
+    ;({ wrapper } = await mountAt('/journal?contest=7'))
+
+    expect(api.journal).toHaveBeenCalledWith({ contest_id: 7, kind: undefined, recipient: undefined, limit: 50 })
+    expect(wrapper.find('[data-journal-id="3"]').text()).toContain('Борис Котов')
+    await wrapper.find('[data-journal-id="3"]').trigger('click')
+    expect(wrapper.find('[role="dialog"] pre.body').text()).toContain('Текст письма 3')
+  })
+
+  it('журнал рассылки участнику недоступен', async () => {
+    signIn(USERS.anna)
+    api.contests.mockResolvedValue([])
+    ;({ wrapper, router } = await mountAt('/journal'))
+    expect(router.currentRoute.value.name).toBe('contests')
+    expect(api.journal).not.toHaveBeenCalled()
   })
 })

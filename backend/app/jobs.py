@@ -26,6 +26,7 @@ from app.models import (
     Job,
     JobKind,
     JobStatus,
+    Role,
     User,
     Vote,
 )
@@ -34,6 +35,12 @@ from app.realtime import Hub
 log = logging.getLogger(__name__)
 
 MAX_ATTEMPTS = 5
+JOB_TITLES = {
+    JobKind.REMIND_SUBMISSION: "напоминание о подаче идей",
+    JobKind.OPEN_VOTING: "начало голосования",
+    JobKind.REMIND_VOTING: "напоминание о голосовании",
+    JobKind.FINALIZE: "итоги и письма участникам",
+}
 MIN_SLEEP_SECONDS = 0.05
 RETRY_STEP = timedelta(seconds=5)
 SHORT_ROUND_NOTE = "раунд короче срока напоминания"
@@ -73,6 +80,7 @@ def plan_jobs(
                 finished_at=created_at if too_short else None,
             )
         )
+    rows.append(_job_row(contest_id, JobKind.OPEN_VOTING, submission_deadline, JobStatus.PENDING))
     rows.append(_job_row(contest_id, JobKind.FINALIZE, voting_deadline, JobStatus.PENDING))
     return rows
 
@@ -157,6 +165,80 @@ def _reminder_text(kind: JobKind, contest: Contest, user: User) -> tuple[str, st
     )
 
 
+def invitation_text(contest: Contest, user: User) -> tuple[str, str]:
+    return (
+        f"Вас пригласили в конкурс идей «{contest.topic}»",
+        f"Здравствуйте, {user.display_name}!\n\n"
+        f"Вас включили в конкурс идей «{contest.topic}».\n\n"
+        f"Приём идей — до {_when(contest.submission_deadline)}.\n"
+        f"Голосование — до {_when(contest.voting_deadline)}.\n\n"
+        "Предложите свою идею: до голосования её видите только вы, "
+        "а авторы раскрываются только после подведения итогов.",
+    )
+
+
+def _voting_open_text(contest: Contest, user: User, ideas: int) -> tuple[str, str]:
+    return (
+        f"Голосование открыто: «{contest.topic}»",
+        f"Здравствуйте, {user.display_name}!\n\n"
+        f"Приём идей в конкурсе «{contest.topic}» завершён, подано {_ideas(ideas)}. "
+        f"Голосование открыто до {_when(contest.voting_deadline)}.\n\n"
+        "Голосовать можно за любые чужие идеи — по одному голосу за каждую. Авторы скрыты до финала.",
+    )
+
+
+def _ideas(n: int) -> str:
+    if n % 10 == 1 and n % 100 != 11:
+        word = "идея"
+    elif n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
+        word = "идеи"
+    else:
+        word = "идей"
+    return f"{n} {word}"
+
+
+def _organizer_text(kind: EmailKind, contest: Contest, user: User, facts: dict) -> tuple[str, str]:
+    """Письма организатору (D-063). До финала — только числа, которые он и так видит на экране."""
+    hello = f"Здравствуйте, {user.display_name}!\n\n"
+    topic = contest.topic
+    if kind == EmailKind.ORG_SUBMISSION_SOON:
+        return (
+            f"Приём идей закрывается {_when(contest.submission_deadline)}: «{topic}»",
+            hello
+            + f"В конкурсе «{topic}» приём идей закрывается {_when(contest.submission_deadline)}.\n"
+            f"Сейчас подано {_ideas(facts['ideas'])}; участников — {facts['participants']}.\n"
+            f"Напоминание отправлено участникам без идей: {facts['reminded']}.",
+        )
+    if kind == EmailKind.ORG_SUBMISSION_CLOSED:
+        if not facts["ideas"]:
+            return (
+                f"Идей не подано: «{topic}»",
+                hello
+                + f"Приём идей в конкурсе «{topic}» завершён, но идей не подано. Голосовать не за что: "
+                f"{_when(contest.voting_deadline)} конкурс завершится без победителя.",
+            )
+        return (
+            f"Приём идей завершён, голосование открыто: «{topic}»",
+            hello
+            + f"Приём идей в конкурсе «{topic}» завершён: подано {_ideas(facts['ideas'])}.\n"
+            f"Голосование открыто до {_when(contest.voting_deadline)}; участникам отправлено письмо.",
+        )
+    if kind == EmailKind.ORG_VOTING_SOON:
+        return (
+            f"Голосование закрывается {_when(contest.voting_deadline)}: «{topic}»",
+            hello
+            + f"В конкурсе «{topic}» голосование закрывается {_when(contest.voting_deadline)}.\n"
+            f"Проголосовали {facts['voters']} из {facts['participants']}. "
+            f"Напоминание отправлено тем, кто ещё не голосовал: {facts['reminded']}.",
+        )
+    return (
+        f"Сбой рассылки: «{topic}»",
+        hello
+        + f"В конкурсе «{topic}» не выполнено задание «{facts['job']}» после нескольких попыток: "
+        "письма участникам могли не уйти. Подробности — в расписании на странице конкурса.",
+    )
+
+
 def _final_text(contest: Contest, user: User, ranking: list[RankedIdea]) -> tuple[str, str]:
     greeting = f"Здравствуйте, {user.display_name}!\n\n"
     if not ranking:
@@ -173,6 +255,14 @@ def _final_text(contest: Contest, user: User, ranking: list[RankedIdea]) -> tupl
         "Результаты:\n" + "\n".join(lines) + "\n\n"
         "При равенстве голосов побеждает идея, поданная раньше."
     )
+    if user.role == Role.ORGANIZER:
+        return (
+            f"Конкурс завершён: «{contest.topic}»",
+            greeting
+            + f"Конкурс «{contest.topic}» завершён. Победила идея «{winner.title}» "
+            f"(автор: {winner.author_name}, {_votes(winner.votes)}). Участникам отправлены итоговые письма.\n\n"
+            + results,
+        )
     if winner.author_id == user.id:
         # Победитель получает то же одно итоговое письмо — в варианте «вы победили» (D-012).
         return (
@@ -192,6 +282,32 @@ def _final_text(contest: Contest, user: User, ranking: list[RankedIdea]) -> tupl
 
 
 # --- выполнение заданий -----------------------------------------------------
+
+
+async def send_invitations(db: AsyncSession, contest: Contest, now: datetime) -> list[int]:
+    """Письмо «вас пригласили» участникам нового конкурса (D-063). Вызывать в транзакции создания."""
+    users = (await db.scalars(_participants(contest.id))).all()
+    letters = [(user, *invitation_text(contest, user)) for user in users]
+    return await JobRunner._send(db, contest, EmailKind.INVITATION, letters, now)
+
+
+async def _creator(db: AsyncSession, contest: Contest) -> User | None:
+    """Создатель конкурса — получатель писем организатора, если он всё ещё организатор с доступом."""
+    user = await db.get(User, contest.created_by)
+    return user if user is not None and user.is_active and user.role == Role.ORGANIZER else None
+
+
+async def _notify_organizer(
+    db: AsyncSession, contest: Contest, kind: EmailKind, facts: dict, now: datetime
+) -> list[int]:
+    organizer = await _creator(db, contest)
+    if organizer is None:
+        return []
+    return await JobRunner._send(db, contest, kind, [(organizer, *_organizer_text(kind, contest, organizer, facts))], now)
+
+
+async def _count(db: AsyncSession, statement) -> int:
+    return await db.scalar(statement) or 0
 
 
 def _participants(contest_id: int):
@@ -291,13 +407,26 @@ class JobRunner:
         log.exception("Задание %s (%s) не выполнено", job.id, job.kind)
         job.attempts += 1
         job.last_error = f"{type(exc).__name__}: {exc}"[:2000]
+        notified: list[int] = []
         if job.attempts >= MAX_ATTEMPTS:
             job.status = JobStatus.FAILED
             job.finished_at = now
+            # Организатор узнаёт о сбое письмом, а не только если сам откроет конкурс (D-063).
+            # Письмо — в своей точке сохранения: его сбой не мешает записать статус задания.
+            try:
+                async with db.begin_nested():
+                    contest = await db.get(Contest, job.contest_id)
+                    notified = await _notify_organizer(
+                        db, contest, EmailKind.ORG_JOB_FAILED, {"job": JOB_TITLES[JobKind(job.kind)]}, now
+                    )
+            except Exception:  # noqa: BLE001
+                log.exception("Не удалось записать письмо о сбое задания %s", job.id)
+                notified = []
         else:
             job.run_at = now + RETRY_STEP * job.attempts
         await db.commit()
         self._hub.schedule_changed(job.contest_id)
+        self._hub.mail_changed(notified)
         return JobOutcome(job.id, job.kind, job.status, job.last_error)
 
     @staticmethod
@@ -312,6 +441,11 @@ class JobRunner:
         phase = phase_at(contest.submission_deadline, contest.voting_deadline, now)
         kind = JobKind(job.kind)
 
+        participants_count = await _count(
+            db, select(func.count()).where(ContestParticipant.contest_id == contest.id)
+        )
+        ideas_count = await _count(db, select(func.count()).select_from(Idea).where(Idea.contest_id == contest.id))
+
         if kind == JobKind.FINALIZE:
             if phase != Phase.FINISHED:
                 raise RuntimeError("финал запущен до срока голосования")
@@ -319,8 +453,36 @@ class JobRunner:
             users = (await db.scalars(_participants(contest.id))).all()
             letters = [(user, *_final_text(contest, user, ranking)) for user in users]
             sent = await JobRunner._send(db, contest, EmailKind.FINAL, letters, now)
+            organizer = await _creator(db, contest)
+            to_organizer = (
+                await JobRunner._send(db, contest, EmailKind.FINAL, [(organizer, *_final_text(contest, organizer, ranking))], now)
+                if organizer is not None
+                else []
+            )
             winner = f"победитель — идея {ranking[0].id}" if ranking else "идей нет"
-            return JobStatus.DONE, f"писем: {len(sent)}; {winner}", sent
+            return JobStatus.DONE, f"писем: {len(sent)}; {winner}", sent + to_organizer
+
+        if kind == JobKind.OPEN_VOTING:
+            # Голосование уже закончилось (сервер долго не работал) — сообщать о начале поздно.
+            if phase != Phase.VOTING:
+                return JobStatus.SKIPPED, "голосование уже завершилось", []
+            sent = []
+            if ideas_count:
+                # Только тем, у кого есть чужие идеи: голосовать за свою нельзя (как и в напоминании).
+                users = (
+                    await db.scalars(
+                        _participants(contest.id).where(
+                            exists().where(Idea.contest_id == contest.id, Idea.author_id != User.id)
+                        )
+                    )
+                ).all()
+                letters = [(user, *_voting_open_text(contest, user, ideas_count)) for user in users]
+                sent = await JobRunner._send(db, contest, EmailKind.VOTING_OPEN, letters, now)
+            to_organizer = await _notify_organizer(
+                db, contest, EmailKind.ORG_SUBMISSION_CLOSED, {"ideas": ideas_count}, now
+            )
+            note = f"писем: {len(sent)}" if ideas_count else "идей нет — голосовать не за что"
+            return JobStatus.DONE, note, sent + to_organizer
 
         # Напоминание: раунд ещё открыт? (простой сервера — D-043)
         round_phase = Phase.SUBMISSION if kind == JobKind.REMIND_SUBMISSION else Phase.VOTING
@@ -347,7 +509,16 @@ class JobRunner:
         users = (await db.scalars(statement)).all()
         letters = [(user, *_reminder_text(kind, contest, user)) for user in users]
         sent = await JobRunner._send(db, contest, email_kind, letters, now)
-        return JobStatus.DONE, f"писем: {len(sent)}", sent
+        # Организатору — сводка числами: те же числа он видит в статистике и расписании (D-058, D-063).
+        facts = {"participants": participants_count, "ideas": ideas_count, "reminded": len(sent)}
+        if kind == JobKind.REMIND_SUBMISSION:
+            to_organizer = await _notify_organizer(db, contest, EmailKind.ORG_SUBMISSION_SOON, facts, now)
+        else:
+            facts["voters"] = await _count(
+                db, select(func.count(func.distinct(Vote.voter_id))).where(Vote.contest_id == contest.id)
+            )
+            to_organizer = await _notify_organizer(db, contest, EmailKind.ORG_VOTING_SOON, facts, now)
+        return JobStatus.DONE, f"писем: {len(sent)}", sent + to_organizer
 
     @staticmethod
     async def _send(

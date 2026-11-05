@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.access import ensure_organizer, load_visible_contest, request_id_reused
 from app.deps import ClockDep, CurrentUserDep, DbSession, HubDep
 from app.domain import Phase, phase_at, ranking_key
-from app.jobs import plan_jobs
+from app.jobs import plan_jobs, send_invitations
 from app.models import Contest, ContestParticipant, Idea, Job, JobKind, Role, User, Vote
 from app.schemas import AuthorOut, ContestSummary, IdeaOut, IdPath, Title
 
@@ -219,9 +219,11 @@ async def create_contest(
             lead=request.app.state.settings.reminder_lead,
         ),
     )
+    contest = await db.get(Contest, contest_id)
+    invited = await send_invitations(db, contest, now)  # в той же транзакции: конкурс без писем невозможен
     await db.commit()
     hub.contest_created(contest_id, participant_ids)  # только после COMMIT (D-039)
-    contest = await db.get(Contest, contest_id)
+    hub.mail_changed(invited)
     return _summary(contest, now)
 
 
@@ -399,7 +401,7 @@ async def get_contest(
 
     stats = schedule = None
     if is_organizer:
-        order = {JobKind.REMIND_SUBMISSION: 0, JobKind.REMIND_VOTING: 1, JobKind.FINALIZE: 2}
+        order = {JobKind.REMIND_SUBMISSION: 0, JobKind.OPEN_VOTING: 1, JobKind.REMIND_VOTING: 2, JobKind.FINALIZE: 3}
         jobs = (await db.scalars(select(Job).where(Job.contest_id == contest.id))).all()
         schedule = [
             ScheduleItem(

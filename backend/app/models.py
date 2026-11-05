@@ -173,6 +173,8 @@ class Vote(Base):
 
 class JobKind(StrEnum):
     REMIND_SUBMISSION = "remind_submission"
+    # В момент окончания приёма идей: «голосование открыто» участникам, итог подачи организатору (D-063).
+    OPEN_VOTING = "open_voting"
     REMIND_VOTING = "remind_voting"
     FINALIZE = "finalize"
 
@@ -190,9 +192,7 @@ class Job(Base):
     __tablename__ = "jobs"
     __table_args__ = (
         UniqueConstraint("contest_id", "kind", name="uq_jobs_contest_id_kind"),
-        CheckConstraint(
-            "kind IN ('remind_submission', 'remind_voting', 'finalize')", name="kind_valid"
-        ),
+        CheckConstraint(_one_of("kind", tuple(k.value for k in JobKind)), name="kind_valid"),
         CheckConstraint(
             "status IN ('pending', 'done', 'skipped', 'failed')", name="status_valid"
         ),
@@ -213,9 +213,17 @@ class Job(Base):
 
 
 class EmailKind(StrEnum):
+    # Участникам.
+    INVITATION = "invitation"  # вас включили в конкурс (D-063)
     REMINDER_SUBMISSION = "reminder_submission"
+    VOTING_OPEN = "voting_open"  # приём идей завершён, можно голосовать (D-063)
     REMINDER_VOTING = "reminder_voting"
-    FINAL = "final"
+    FINAL = "final"  # итоги; организатору — тоже, в своём варианте
+    # Организатору — создателю конкурса (D-063). Только числа, без имён до финала.
+    ORG_SUBMISSION_SOON = "org_submission_soon"
+    ORG_SUBMISSION_CLOSED = "org_submission_closed"
+    ORG_VOTING_SOON = "org_voting_soon"
+    ORG_JOB_FAILED = "org_job_failed"
 
 
 class Email(Base):
@@ -227,10 +235,10 @@ class Email(Base):
         UniqueConstraint(
             "contest_id", "recipient_id", "kind", name="uq_emails_contest_id_recipient_id_kind"
         ),
-        CheckConstraint(
-            "kind IN ('reminder_submission', 'reminder_voting', 'final')", name="kind_valid"
-        ),
+        CheckConstraint(_one_of("kind", tuple(k.value for k in EmailKind)), name="kind_valid"),
         Index("ix_emails_recipient_created", "recipient_id", "created_at"),
+        # Журнал рассылки: все письма от новых к старым (D-063).
+        Index("ix_emails_created_at_id", "created_at", "id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -242,6 +250,8 @@ class Email(Base):
     subject: Mapped[str] = mapped_column(String(300))
     body: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Когда получатель открыл письмо; null — не прочитано (D-063).
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class LoginThrottle(Base):

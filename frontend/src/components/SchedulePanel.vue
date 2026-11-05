@@ -14,6 +14,7 @@ const props = defineProps({
 
 const KIND = {
   remind_submission: { title: 'Напоминание о подаче идей', icon: 'bell' },
+  open_voting: { title: 'Начало голосования: письма участникам', icon: 'vote' },
   remind_voting: { title: 'Напоминание о голосовании', icon: 'bell' },
   finalize: { title: 'Итоги и письма участникам', icon: 'flag' },
 }
@@ -58,7 +59,7 @@ const STATUS = {
         </div>
       </li>
     </ul>
-    <RouterLink class="btn btn-soft btn-sm mail-link" :to="{ name: 'mail', query: { contest: contestId } }">
+    <RouterLink class="btn btn-soft btn-sm mail-link" :to="{ name: 'journal', query: { contest: contestId } }">
       <Icon name="mail" /> Письма этого конкурса
     </RouterLink>
   </section>
